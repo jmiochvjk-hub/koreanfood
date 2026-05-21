@@ -1,6 +1,8 @@
 const STORAGE_KEY = "korean-food-map.places";
 const SUPABASE_TABLE = "food_places";
 const SEOUL = [37.5665, 126.978];
+const MERGE_RADIUS_METERS = 200;
+const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 
 const categoryColors = {
   韩餐: "#2f8756",
@@ -9,6 +11,8 @@ const categoryColors = {
   咖啡甜品: "#7a5a3a",
   海鲜: "#167a7f",
   酒馆: "#6d5bd0",
+  日料: "#e36b66",
+  中餐: "#c98e1c",
 };
 
 const samplePlaces = [
@@ -95,6 +99,9 @@ const elements = {
   seoul: document.querySelector("#seoulButton"),
   reset: document.querySelector("#resetButton"),
   clearDraft: document.querySelector("#clearDraftButton"),
+  addressSearch: document.querySelector("#addressSearchInput"),
+  addressSearchButton: document.querySelector("#addressSearchButton"),
+  addressResults: document.querySelector("#addressSearchResults"),
 };
 
 map.on("click", (event) => {
@@ -129,6 +136,14 @@ elements.form.addEventListener("submit", async (event) => {
 elements.search.addEventListener("input", render);
 elements.filter.addEventListener("change", render);
 elements.clearDraft.addEventListener("click", clearDraftLocation);
+
+elements.addressSearchButton.addEventListener("click", () => runAddressSearch());
+elements.addressSearch.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runAddressSearch();
+  }
+});
 
 elements.seoul.addEventListener("click", () => {
   map.setView(SEOUL, 12);
@@ -233,25 +248,103 @@ async function addPlace(place) {
   setBusy(true);
 
   try {
-    if (isCloudMode) {
-      const data = await db.insertPlaces(place);
-      places = [normalizePlace(data[0]), ...places];
+    const existing = findSamePlace(place);
+    let resultId;
+    let merged = false;
+
+    if (existing) {
+      const updated = mergeFields(existing, place);
+      if (isCloudMode) {
+        const data = await db.updatePlace(existing.id, updated);
+        replaceInPlaces(normalizePlace(data[0]));
+      } else {
+        replaceInPlaces({ ...existing, ...updated });
+        saveLocalPlaces();
+      }
+      resultId = existing.id;
+      merged = true;
     } else {
-      places = [place, ...places];
-      saveLocalPlaces();
+      if (isCloudMode) {
+        const data = await db.insertPlaces({ ...place, submission_count: 1 });
+        places = [normalizePlace(data[0]), ...places];
+      } else {
+        places = [{ ...place, submission_count: 1 }, ...places];
+        saveLocalPlaces();
+      }
+      resultId = place.id;
     }
 
     elements.form.reset();
     elements.rating.value = "4.5";
     clearDraftLocation();
+    showAddressResults(null);
     render();
-    focusPlace(place.id);
-    setStatus(isCloudMode ? "已保存到云端" : "已保存到本地", isCloudMode ? "cloud" : "local");
+    focusPlace(resultId);
+
+    const where = isCloudMode ? "云端" : "本地";
+    const verb = merged ? "已合并评分到现有点" : "已保存";
+    setStatus(`${verb}（${where}）`, isCloudMode ? "cloud" : "local");
   } catch (error) {
     setStatus(`添加失败：${error.message}`, isCloudMode ? "cloud" : "local");
   } finally {
     setBusy(false);
   }
+}
+
+function findSamePlace(candidate) {
+  const target = (candidate.name || "").trim().toLowerCase();
+  if (!target) return null;
+  return places.find((place) => {
+    if ((place.name || "").trim().toLowerCase() !== target) return false;
+    return haversineMeters(place.lat, place.lng, candidate.lat, candidate.lng) <= MERGE_RADIUS_METERS;
+  });
+}
+
+function mergeFields(existing, incoming) {
+  const prevCount = Math.max(1, Number(existing.submission_count || 1));
+  const newCount = prevCount + 1;
+
+  const rating = roundTo(((existing.rating || 0) * prevCount + (incoming.rating || 0)) / newCount, 2);
+
+  let price = existing.price || 0;
+  if (incoming.price > 0) {
+    price = existing.price > 0
+      ? Math.round(((existing.price * prevCount) + incoming.price) / newCount)
+      : incoming.price;
+  }
+
+  return {
+    rating,
+    price,
+    submission_count: newCount,
+  };
+}
+
+function replaceInPlaces(updated) {
+  const idx = places.findIndex((place) => place.id === updated.id);
+  if (idx === -1) {
+    places = [updated, ...places];
+    return;
+  }
+  const next = [...places];
+  next[idx] = { ...next[idx], ...updated };
+  places = next;
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function roundTo(value, decimals) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
 }
 
 async function deletePlace(id) {
@@ -316,6 +409,13 @@ function createSupabaseRestClient(url, anonKey) {
         body: JSON.stringify(payload),
       });
     },
+    updatePlace(id, patch) {
+      return request(`?id=eq.${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(patch),
+      });
+    },
     deletePlace(id) {
       return request(`?id=eq.${encodeURIComponent(id)}`, {
         method: "DELETE",
@@ -344,6 +444,7 @@ function normalizePlace(place) {
     note: place.note || "",
     lat: Number(place.lat),
     lng: Number(place.lng),
+    submission_count: Math.max(1, Number(place.submission_count || 1)),
   };
 }
 
@@ -370,6 +471,97 @@ function clearDraftLocation() {
     draftMarker.remove();
     draftMarker = null;
   }
+}
+
+async function runAddressSearch() {
+  const query = elements.addressSearch.value.trim();
+  if (!query) {
+    showAddressResults(null);
+    return;
+  }
+
+  elements.addressSearchButton.disabled = true;
+  elements.addressSearchButton.textContent = "搜索中";
+
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      format: "json",
+      limit: "6",
+      addressdetails: "1",
+      namedetails: "1",
+      "accept-language": "ko,zh-CN,en",
+      countrycodes: "kr",
+    });
+    const response = await fetch(`${NOMINATIM_ENDPOINT}?${params}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const results = await response.json();
+    showAddressResults(results);
+  } catch (error) {
+    showAddressResults(null, `搜索失败：${error.message}`);
+  } finally {
+    elements.addressSearchButton.disabled = false;
+    elements.addressSearchButton.textContent = "搜索";
+  }
+}
+
+function showAddressResults(results, errorMessage) {
+  elements.addressResults.innerHTML = "";
+
+  if (errorMessage) {
+    const empty = document.createElement("div");
+    empty.className = "address-results-empty";
+    empty.textContent = errorMessage;
+    elements.addressResults.append(empty);
+    elements.addressResults.hidden = false;
+    return;
+  }
+
+  if (!results || !results.length) {
+    elements.addressResults.hidden = true;
+    return;
+  }
+
+  results.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "address-result";
+
+    const title = document.createElement("span");
+    title.className = "address-result-title";
+    title.textContent = pickResultName(item);
+
+    const meta = document.createElement("span");
+    meta.className = "address-result-meta";
+    meta.textContent = item.display_name || "";
+
+    button.append(title, meta);
+    button.addEventListener("click", () => pickAddressResult(item));
+    elements.addressResults.append(button);
+  });
+
+  elements.addressResults.hidden = false;
+}
+
+function pickResultName(item) {
+  const named = item.namedetails && (item.namedetails.name || item.namedetails["name:ko"]);
+  if (named) return named;
+  if (item.name) return item.name;
+  if (item.display_name) return item.display_name.split(",")[0].trim();
+  return "未命名地点";
+}
+
+function pickAddressResult(item) {
+  const latlng = { lat: Number(item.lat), lng: Number(item.lon) };
+  setDraftLocation(latlng);
+  map.setView(latlng, Math.max(map.getZoom(), 16));
+
+  if (!elements.name.value.trim()) {
+    elements.name.value = pickResultName(item);
+  }
+
+  elements.addressResults.hidden = true;
+  elements.name.focus();
 }
 
 function render() {
@@ -404,7 +596,7 @@ function renderMarkers() {
     const popupHtml = `
       <div class="map-popup">
         <strong>${escapeHtml(place.name)}</strong>
-        <span>${escapeHtml(place.category)} · ${formatRating(place.rating)} · ${formatPrice(place.price)}</span>
+        <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
         <span>${escapeHtml(place.dish || place.note || "暂无备注")}</span>
       </div>
     `;
@@ -440,7 +632,7 @@ function renderList() {
     const card = elements.template.content.firstElementChild.cloneNode(true);
     card.querySelector(".place-title").textContent = place.name;
     card.querySelector(".place-meta").textContent =
-      `${place.category} · ${formatRating(place.rating)} · ${formatPrice(place.price)}`;
+      `${place.category} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}`;
     card.querySelector(".place-note").textContent = place.dish || place.note || "暂无推荐菜";
 
     card.querySelector(".place-main").addEventListener("click", () => focusPlace(place.id));
@@ -481,6 +673,11 @@ function setStatus(message, mode) {
 
 function formatRating(rating) {
   return rating ? `${rating.toFixed(1)}分` : "未评分";
+}
+
+function formatCount(count) {
+  const n = Number(count || 1);
+  return n > 1 ? `（${n}人）` : "";
 }
 
 function formatPrice(price) {

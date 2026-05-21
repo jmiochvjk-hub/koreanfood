@@ -41,8 +41,18 @@
             <option value="咖啡甜品">咖啡甜品</option>
             <option value="海鲜">海鲜</option>
             <option value="酒馆">酒馆</option>
+            <option value="日料">日料</option>
+            <option value="中餐">中餐</option>
           </select>
         </div>
+
+        <section class="address-search" aria-label="按地址或店名搜索">
+          <div class="address-search-row">
+            <input id="addressSearchInput" type="search" placeholder="输入韩语地址或店名定位（如：明洞 8길 27）" autocomplete="off" />
+            <button id="addressSearchButton" type="button">搜索</button>
+          </div>
+          <div id="addressSearchResults" class="address-results" hidden></div>
+        </section>
 
         <form class="place-form" id="placeForm">
           <div class="form-grid">
@@ -59,6 +69,8 @@
                 <option>咖啡甜品</option>
                 <option>海鲜</option>
                 <option>酒馆</option>
+                <option>日料</option>
+                <option>中餐</option>
               </select>
             </label>
           </div>
@@ -117,6 +129,6 @@
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     ></script>
     <script src="./config.js?v=20260521b"></script>
-    <script src="./app.js?v=20260521b"></script>
+    <script src="./app.js?v=20260521c"></script>
   </body>
 </html>
