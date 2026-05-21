@@ -118,6 +118,13 @@ elements.form.addEventListener("submit", async (event) => {
     return;
   }
 
+  const reason = elements.note.value.trim();
+  if (!reason) {
+    elements.note.focus();
+    setStatus("请填写推荐理由", isCloudMode ? "cloud" : "local");
+    return;
+  }
+
   const place = {
     id: crypto.randomUUID(),
     name: elements.name.value.trim(),
@@ -125,7 +132,7 @@ elements.form.addEventListener("submit", async (event) => {
     dish: elements.dish.value.trim(),
     rating: Number(elements.rating.value || 0),
     price: Number(elements.price.value || 0),
-    note: elements.note.value.trim(),
+    note: reason,
     lat: Number(selectedLatLng.lat.toFixed(6)),
     lng: Number(selectedLatLng.lng.toFixed(6)),
   };
@@ -316,8 +323,19 @@ function mergeFields(existing, incoming) {
   return {
     rating,
     price,
+    note: appendReason(existing.note, incoming.note),
     submission_count: newCount,
   };
+}
+
+function appendReason(existing, incoming) {
+  const next = (incoming || "").trim();
+  const prev = (existing || "").trim();
+  if (!next) return prev;
+  const haystack = prev.toLowerCase();
+  if (haystack.includes(next.toLowerCase())) return prev;
+  const bullet = `• ${next}`;
+  return prev ? `${prev}\n${bullet}` : bullet;
 }
 
 function replaceInPlaces(updated) {
@@ -597,7 +615,8 @@ function renderMarkers() {
       <div class="map-popup">
         <strong>${escapeHtml(place.name)}</strong>
         <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
-        <span>${escapeHtml(place.dish || place.note || "暂无备注")}</span>
+        <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
+        ${place.dish ? `<span class="map-popup-dish">推荐菜：${escapeHtml(place.dish)}</span>` : ""}
       </div>
     `;
 
@@ -633,7 +652,7 @@ function renderList() {
     card.querySelector(".place-title").textContent = place.name;
     card.querySelector(".place-meta").textContent =
       `${place.category} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}`;
-    card.querySelector(".place-note").textContent = place.dish || place.note || "暂无推荐菜";
+    card.querySelector(".place-note").textContent = place.note || "暂无推荐理由";
 
     card.querySelector(".place-main").addEventListener("click", () => focusPlace(place.id));
     card.querySelector(".delete-button").addEventListener("click", () => deletePlace(place.id));

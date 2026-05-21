@@ -431,6 +431,16 @@ label {
   font-size: 13px;
 }
 
+.map-popup-reason {
+  margin-top: 4px;
+  color: var(--ink) !important;
+  white-space: pre-line;
+}
+
+.map-popup-dish {
+  margin-top: 2px;
+}
+
 .pin-icon {
   display: grid;
   place-items: center;
