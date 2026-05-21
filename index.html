@@ -116,9 +116,11 @@
         </form>
 
         <section class="list-section" aria-label="地点列表">
-          <div class="section-title">
-            <h2>我的收藏</h2>
-            <button id="resetButton" type="button">恢复示例</button>
+          <div class="view-tabs" role="tablist">
+            <button type="button" class="view-tab" data-view="all" role="tab" aria-selected="true">全部</button>
+            <button type="button" class="view-tab" data-view="favorites" role="tab" aria-selected="false">★ 我的收藏</button>
+            <button type="button" class="view-tab" data-view="mine" role="tab" aria-selected="false">我上传的</button>
+            <button id="resetButton" type="button" class="reset-button" title="恢复示例">恢复</button>
           </div>
           <div class="place-list" id="placeList"></div>
         </section>
@@ -134,11 +136,14 @@
           <span class="place-meta"></span>
           <span class="place-note"></span>
         </button>
-        <button class="delete-button" type="button" title="删除">×</button>
+        <div class="place-actions">
+          <button class="favorite-button" type="button" data-active="false" aria-label="收藏" title="收藏">☆</button>
+          <button class="delete-button" type="button" title="删除">×</button>
+        </div>
       </article>
     </template>
 
     <script src="./config.js?v=20260521d"></script>
-    <script src="./app.js?v=20260521k"></script>
+    <script src="./app.js?v=20260521l"></script>
   </body>
 </html>

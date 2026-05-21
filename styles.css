@@ -417,6 +417,77 @@ label {
   overflow: hidden;
 }
 
+.place-actions {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+}
+
+.favorite-button {
+  flex: 1;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: #b4bcb6;
+  background: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.favorite-button[data-active="true"] {
+  color: #d4a017;
+  background: #fff8e6;
+}
+
+.favorite-button:hover {
+  background: #f4f1ea;
+}
+
+.view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.view-tab {
+  flex: 1;
+  min-width: 80px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.view-tab[aria-selected="true"] {
+  border-color: var(--sea);
+  color: #fff;
+  background: var(--sea);
+}
+
+.view-tab:hover:not([aria-selected="true"]) {
+  border-color: var(--sea);
+  color: var(--sea);
+}
+
+.reset-button {
+  border: 0;
+  padding: 7px 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.reset-button:hover {
+  color: var(--ink);
+}
+
 .place-thumb {
   background-color: #eef2ef;
   background-size: cover;
@@ -455,11 +526,12 @@ label {
 }
 
 .delete-button {
+  flex: 1;
   border: 0;
-  border-left: 1px solid var(--line);
   color: #a63b32;
   background: #fff7f6;
   font-size: 22px;
+  cursor: pointer;
 }
 
 .kakao-popup {

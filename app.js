@@ -1,5 +1,6 @@
 const STORAGE_KEY = "korean-food-map.places";
 const DEVICE_ID_KEY = "korean-food-map.device-id";
+const FAVORITES_KEY = "korean-food-map.favorites";
 const SUPABASE_TABLE = "food_places";
 const STORAGE_BUCKET = "food-photos";
 const SEOUL = [37.5665, 126.978];
@@ -9,6 +10,8 @@ const PHOTO_QUALITY = 0.85;
 const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 
 const deviceId = getOrCreateDeviceId();
+const favoritePlaceIds = loadFavorites();
+let viewMode = "all";
 
 function getOrCreateDeviceId() {
   try {
@@ -21,6 +24,31 @@ function getOrCreateDeviceId() {
   } catch {
     return crypto.randomUUID();
   }
+}
+
+function loadFavorites() {
+  try {
+    const stored = localStorage.getItem(FAVORITES_KEY);
+    if (!stored) return new Set();
+    const arr = JSON.parse(stored);
+    return new Set(Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFavorites() {
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favoritePlaceIds]));
+  } catch {
+    // best-effort
+  }
+}
+
+function toggleFavorite(id) {
+  if (favoritePlaceIds.has(id)) favoritePlaceIds.delete(id);
+  else favoritePlaceIds.add(id);
+  saveFavorites();
 }
 
 const categoryColors = {
@@ -182,6 +210,16 @@ elements.form.addEventListener("submit", async (event) => {
 elements.search.addEventListener("input", render);
 elements.filter.addEventListener("change", render);
 elements.clearDraft.addEventListener("click", clearDraftLocation);
+
+document.querySelectorAll(".view-tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    viewMode = btn.dataset.view || "all";
+    document.querySelectorAll(".view-tab").forEach((other) => {
+      other.setAttribute("aria-selected", other === btn ? "true" : "false");
+    });
+    render();
+  });
+});
 
 elements.addressSearchButton.addEventListener("click", () => runAddressSearch());
 elements.addressSearch.addEventListener("keydown", (event) => {
@@ -866,7 +904,7 @@ function resizeImageToBlob(file, maxDim, quality) {
 function render() {
   renderMarkers();
   renderList();
-  elements.count.textContent = places.length;
+  elements.count.textContent = getFilteredPlaces().length;
 }
 
 function getFilteredPlaces() {
@@ -874,6 +912,9 @@ function getFilteredPlaces() {
   const filter = elements.filter.value;
 
   return places.filter((place) => {
+    if (viewMode === "favorites" && !favoritePlaceIds.has(place.id)) return false;
+    if (viewMode === "mine" && !(Array.isArray(place.contributors) && place.contributors.includes(deviceId))) return false;
+
     let matchesFilter;
     if (filter === "all") {
       matchesFilter = true;
@@ -935,7 +976,13 @@ function renderList() {
   if (!filteredPlaces.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "没有匹配的美食点。点击地图添加一个新的吧。";
+    if (viewMode === "favorites") {
+      empty.textContent = "还没有收藏。点开任意美食点旁边的 ☆ 按钮收藏。";
+    } else if (viewMode === "mine") {
+      empty.textContent = "你还没上传过餐厅。在地图上点一下、填表提交即可。";
+    } else {
+      empty.textContent = "没有匹配的美食点。点击地图添加一个新的吧。";
+    }
     elements.list.append(empty);
     return;
   }
@@ -961,6 +1008,16 @@ function renderList() {
     card.querySelector(".place-meta").textContent =
       `${place.category} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}`;
     card.querySelector(".place-note").textContent = place.note || "暂无推荐理由";
+
+    const favBtn = card.querySelector(".favorite-button");
+    const isFav = favoritePlaceIds.has(place.id);
+    favBtn.dataset.active = String(isFav);
+    favBtn.textContent = isFav ? "★" : "☆";
+    favBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleFavorite(place.id);
+      render();
+    });
 
     card.querySelector(".place-main").addEventListener("click", () => focusPlace(place.id));
     card.querySelector(".delete-button").addEventListener("click", () => deletePlace(place.id));
