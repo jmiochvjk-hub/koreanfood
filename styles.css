@@ -534,11 +534,13 @@ label {
   cursor: pointer;
 }
 
-.place-list[data-view="all"] .delete-button {
+.place-list[data-view="all"] .delete-button,
+.place-list[data-view="favorites"] .delete-button {
   display: none;
 }
 
-.place-list[data-view="all"] .favorite-button {
+.place-list[data-view="all"] .favorite-button,
+.place-list[data-view="favorites"] .favorite-button {
   border-bottom: 0;
 }
 
