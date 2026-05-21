@@ -35,6 +35,7 @@
           <input id="searchInput" type="search" placeholder="搜索店名、地区、菜品" autocomplete="off" />
           <select id="categoryFilter" aria-label="分类筛选">
             <option value="all">全部</option>
+            <option value="__idol__">★ 爱豆同款</option>
             <option value="韩餐">韩餐</option>
             <option value="烤肉">烤肉</option>
             <option value="街头小吃">街头小吃</option>
@@ -76,6 +77,11 @@
               </select>
             </label>
           </div>
+
+          <label class="idol-field">
+            ★ 爱豆同款（可选）
+            <input id="idolInput" name="idol" placeholder="哪个爱豆？比如 BTS RM、TWICE 나연——留空=非同款" autocomplete="off" />
+          </label>
 
           <label>
             推荐菜 / 关键词
@@ -126,6 +132,7 @@
       <article class="place-card">
         <div class="place-thumb" data-empty="true" aria-hidden="true"></div>
         <button class="place-main" type="button">
+          <span class="place-idol" hidden></span>
           <span class="place-title"></span>
           <span class="place-meta"></span>
           <span class="place-note"></span>
@@ -138,6 +145,6 @@
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     ></script>
     <script src="./config.js?v=20260521c"></script>
-    <script src="./app.js?v=20260521g"></script>
+    <script src="./app.js?v=20260521h"></script>
   </body>
 </html>

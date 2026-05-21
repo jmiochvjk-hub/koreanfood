@@ -344,6 +344,43 @@ textarea:focus {
   border-radius: 6px;
 }
 
+.idol-field input {
+  border-color: #d6c2f3;
+  background: #faf6ff;
+}
+
+.idol-field input:focus {
+  border-color: #6d3b8e;
+  box-shadow: 0 0 0 3px rgba(109, 59, 142, 0.15);
+}
+
+.place-idol {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #6d3b8e;
+  background: #f4eaff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.place-idol[hidden] {
+  display: none;
+}
+
+.map-popup-idol {
+  display: inline-block !important;
+  margin-bottom: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #6d3b8e !important;
+  background: #f4eaff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 label {
   display: grid;
   gap: 7px;

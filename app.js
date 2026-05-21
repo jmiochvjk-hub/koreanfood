@@ -92,6 +92,7 @@ const elements = {
   rating: document.querySelector("#ratingInput"),
   price: document.querySelector("#priceInput"),
   note: document.querySelector("#noteInput"),
+  idol: document.querySelector("#idolInput"),
   coordinateText: document.querySelector("#coordinateText"),
   list: document.querySelector("#placeList"),
   count: document.querySelector("#placeCount"),
@@ -163,6 +164,7 @@ elements.form.addEventListener("submit", async (event) => {
     lat: Number(selectedLatLng.lat.toFixed(6)),
     lng: Number(selectedLatLng.lng.toFixed(6)),
     image_url: imageUrl,
+    idol_name: elements.idol.value.trim(),
   };
 
   await addPlace(place);
@@ -358,11 +360,16 @@ function mergeFields(existing, incoming) {
     ? existing.image_url
     : (incoming.image_url || "");
 
+  const idol_name = existing.idol_name && existing.idol_name.length
+    ? existing.idol_name
+    : (incoming.idol_name || "");
+
   return {
     rating,
     price,
     note: appendReason(existing.note, incoming.note),
     image_url,
+    idol_name,
     submission_count: newCount,
   };
 }
@@ -502,6 +509,7 @@ function normalizePlace(place) {
     lat: Number(place.lat),
     lng: Number(place.lng),
     image_url: place.image_url || "",
+    idol_name: place.idol_name || "",
     submission_count: Math.max(1, Number(place.submission_count || 1)),
   };
 }
@@ -774,12 +782,21 @@ function render() {
 
 function getFilteredPlaces() {
   const query = elements.search.value.trim().toLowerCase();
-  const category = elements.filter.value;
+  const filter = elements.filter.value;
 
   return places.filter((place) => {
-    const matchesCategory = category === "all" || place.category === category;
-    const searchable = [place.name, place.category, place.dish, place.note].join(" ").toLowerCase();
-    return matchesCategory && searchable.includes(query);
+    let matchesFilter;
+    if (filter === "all") {
+      matchesFilter = true;
+    } else if (filter === "__idol__") {
+      matchesFilter = Boolean(place.idol_name && place.idol_name.length);
+    } else {
+      matchesFilter = place.category === filter;
+    }
+    const searchable = [place.name, place.category, place.dish, place.note, place.idol_name]
+      .join(" ")
+      .toLowerCase();
+    return matchesFilter && searchable.includes(query);
   });
 }
 
@@ -798,6 +815,7 @@ function renderMarkers() {
     const popupHtml = `
       <div class="map-popup">
         ${place.image_url ? `<img class="map-popup-image" src="${escapeHtml(place.image_url)}" alt="${escapeHtml(place.name)}" loading="lazy" />` : ""}
+        ${place.idol_name ? `<span class="map-popup-idol">★ ${escapeHtml(place.idol_name)} 同款</span>` : ""}
         <strong>${escapeHtml(place.name)}</strong>
         <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
         <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
@@ -841,6 +859,13 @@ function renderList() {
     } else {
       thumb.style.backgroundImage = "";
       thumb.dataset.empty = "true";
+    }
+    const idolEl = card.querySelector(".place-idol");
+    if (place.idol_name) {
+      idolEl.textContent = `★ ${place.idol_name} 同款`;
+      idolEl.hidden = false;
+    } else {
+      idolEl.hidden = true;
     }
     card.querySelector(".place-title").textContent = place.name;
     card.querySelector(".place-meta").textContent =
