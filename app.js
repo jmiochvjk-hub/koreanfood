@@ -73,16 +73,9 @@ let db = null;
 let isCloudMode = false;
 const markers = new Map();
 
-const map = L.map("map", {
-  zoomControl: false,
-}).setView(SEOUL, 12);
-
-L.control.zoom({ position: "bottomleft" }).addTo(map);
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+let map = null;
+let kakaoSdk = null;
+let activePopup = null;
 
 const elements = {
   form: document.querySelector("#placeForm"),
@@ -115,17 +108,11 @@ let pendingPhotoBlob = null;
 let pendingPhotoObjectUrl = null;
 let kakaoReadyPromise = null;
 
-map.on("click", (event) => {
-  setDraftLocation(event.latlng);
-  elements.name.focus();
-});
-
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!selectedLatLng) {
     elements.coordinateText.textContent = "请先点击地图选择位置";
-    map.getContainer().focus();
     return;
   }
 
@@ -188,11 +175,13 @@ elements.photo.addEventListener("change", () => {
 });
 
 elements.seoul.addEventListener("click", () => {
-  map.setView(SEOUL, 12);
+  if (!map) return;
+  map.setCenter(new kakaoSdk.maps.LatLng(SEOUL[0], SEOUL[1]));
+  map.setLevel(7);
 });
 
 elements.locate.addEventListener("click", () => {
-  if (!navigator.geolocation) {
+  if (!navigator.geolocation || !map) {
     elements.coordinateText.textContent = "当前浏览器不支持定位";
     return;
   }
@@ -203,7 +192,8 @@ elements.locate.addEventListener("click", () => {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       };
-      map.setView(latlng, 14);
+      map.setCenter(new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng));
+      map.setLevel(5);
       setDraftLocation(latlng);
     },
     () => {
@@ -236,8 +226,37 @@ elements.reset.addEventListener("click", async () => {
 
 async function init() {
   setupSupabase();
+  kakaoSdk = await ensureKakaoSdk();
+  if (!kakaoSdk) {
+    document.getElementById("map").innerHTML =
+      '<div class="map-fallback">Kakao Maps SDK 未加载——请检查 config.js 的 KAKAO_JS_KEY 是否已填，以及 Kakao Developers 后台的 Web 平台域名是否包含当前站点。</div>';
+    setStatus("Kakao Maps 加载失败", "local");
+    return;
+  }
+  initMap(kakaoSdk);
   places = await loadPlaces();
   render();
+}
+
+function initMap(kakao) {
+  const container = document.getElementById("map");
+  map = new kakao.maps.Map(container, {
+    center: new kakao.maps.LatLng(SEOUL[0], SEOUL[1]),
+    level: 7,
+  });
+
+  const zoomControl = new kakao.maps.ZoomControl();
+  map.addControl(zoomControl, kakao.maps.ControlPosition.BOTTOMLEFT);
+
+  kakao.maps.event.addListener(map, "click", (mouseEvent) => {
+    closePopup();
+    const latlng = {
+      lat: mouseEvent.latLng.getLat(),
+      lng: mouseEvent.latLng.getLng(),
+    };
+    setDraftLocation(latlng);
+    elements.name.focus();
+  });
 }
 
 function setupSupabase() {
@@ -518,15 +537,22 @@ function setDraftLocation(latlng) {
   selectedLatLng = latlng;
   elements.coordinateText.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
 
+  if (!map || !kakaoSdk) return;
+
+  const position = new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng);
   if (draftMarker) {
-    draftMarker.setLatLng(latlng);
+    draftMarker.setPosition(position);
     return;
   }
 
-  draftMarker = L.marker(latlng, {
-    icon: createPinIcon("#1d252c", "+"),
-    opacity: 0.85,
-  }).addTo(map);
+  draftMarker = new kakaoSdk.maps.CustomOverlay({
+    position,
+    content: buildPinElement("#1d252c", "+", { draft: true }),
+    yAnchor: 1,
+    xAnchor: 0.5,
+    clickable: false,
+  });
+  draftMarker.setMap(map);
 }
 
 function clearDraftLocation() {
@@ -534,7 +560,7 @@ function clearDraftLocation() {
   elements.coordinateText.textContent = "点击地图选择位置";
 
   if (draftMarker) {
-    draftMarker.remove();
+    draftMarker.setMap(null);
     draftMarker = null;
   }
 }
@@ -677,7 +703,10 @@ function pickResultName(item) {
 function pickAddressResult(item) {
   const latlng = { lat: Number(item.lat), lng: Number(item.lon) };
   setDraftLocation(latlng);
-  map.setView(latlng, Math.max(map.getZoom(), 16));
+  if (map && kakaoSdk) {
+    map.setCenter(new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng));
+    if (map.getLevel() > 3) map.setLevel(3);
+  }
 
   if (!elements.name.value.trim()) {
     elements.name.value = pickResultName(item);
@@ -801,40 +830,41 @@ function getFilteredPlaces() {
 }
 
 function renderMarkers() {
+  if (!map || !kakaoSdk) return;
+
   const filteredPlaces = getFilteredPlaces();
   const visibleIds = new Set(filteredPlaces.map((place) => place.id));
 
   markers.forEach((marker, id) => {
     if (!visibleIds.has(id)) {
-      marker.remove();
+      marker.setMap(null);
       markers.delete(id);
     }
   });
 
+  if (activePopup && !visibleIds.has(activePopup.placeId)) {
+    closePopup();
+  }
+
   filteredPlaces.forEach((place) => {
-    const popupHtml = `
-      <div class="map-popup">
-        ${place.image_url ? `<img class="map-popup-image" src="${escapeHtml(place.image_url)}" alt="${escapeHtml(place.name)}" loading="lazy" />` : ""}
-        ${place.idol_name ? `<span class="map-popup-idol">★ ${escapeHtml(place.idol_name)} 同款</span>` : ""}
-        <strong>${escapeHtml(place.name)}</strong>
-        <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
-        <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
-        ${place.dish ? `<span class="map-popup-dish">推荐菜：${escapeHtml(place.dish)}</span>` : ""}
-      </div>
-    `;
+    if (markers.has(place.id)) return;
 
-    if (markers.has(place.id)) {
-      markers.get(place.id).setPopupContent(popupHtml);
-      return;
-    }
+    const color = categoryColors[place.category] || "#167a7f";
+    const pin = buildPinElement(color, place.category.slice(0, 1));
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openPopup(place);
+    });
 
-    const marker = L.marker([place.lat, place.lng], {
-      icon: createPinIcon(categoryColors[place.category] || "#167a7f", place.category.slice(0, 1)),
-    })
-      .addTo(map)
-      .bindPopup(popupHtml);
-
-    markers.set(place.id, marker);
+    const overlay = new kakaoSdk.maps.CustomOverlay({
+      position: new kakaoSdk.maps.LatLng(place.lat, place.lng),
+      content: pin,
+      yAnchor: 1,
+      xAnchor: 0.5,
+      clickable: true,
+    });
+    overlay.setMap(map);
+    markers.set(place.id, overlay);
   });
 }
 
@@ -881,21 +911,74 @@ function renderList() {
 
 function focusPlace(id) {
   const place = places.find((item) => item.id === id);
-  const marker = markers.get(id);
-  if (!place || !marker) return;
+  if (!place || !map || !kakaoSdk) return;
 
-  map.setView([place.lat, place.lng], Math.max(map.getZoom(), 14));
-  marker.openPopup();
+  map.setCenter(new kakaoSdk.maps.LatLng(place.lat, place.lng));
+  if (map.getLevel() > 5) map.setLevel(5);
+  openPopup(place);
 }
 
-function createPinIcon(color, label) {
-  return L.divIcon({
-    className: "",
-    iconSize: [34, 34],
-    iconAnchor: [17, 34],
-    popupAnchor: [0, -30],
-    html: `<div class="pin-icon" style="background:${color}"><span>${escapeHtml(label)}</span></div>`,
+function buildPinElement(color, label, options = {}) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "pin-wrapper";
+  if (options.draft) wrapper.classList.add("pin-wrapper-draft");
+  const inner = document.createElement("div");
+  inner.className = "pin-icon";
+  inner.style.background = color;
+  const text = document.createElement("span");
+  text.textContent = label;
+  inner.append(text);
+  wrapper.append(inner);
+  return wrapper;
+}
+
+function openPopup(place) {
+  if (!map || !kakaoSdk) return;
+  closePopup();
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "kakao-popup";
+  wrapper.innerHTML = `
+    ${place.image_url ? `<img class="map-popup-image" src="${escapeHtml(place.image_url)}" alt="${escapeHtml(place.name)}" loading="lazy" />` : ""}
+    ${place.idol_name ? `<span class="map-popup-idol">★ ${escapeHtml(place.idol_name)} 同款</span>` : ""}
+    <strong>${escapeHtml(place.name)}</strong>
+    <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
+    <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
+    ${place.dish ? `<span class="map-popup-dish">推荐菜：${escapeHtml(place.dish)}</span>` : ""}
+  `;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "kakao-popup-close";
+  closeBtn.setAttribute("aria-label", "关闭");
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closePopup();
   });
+  wrapper.append(closeBtn);
+
+  const tail = document.createElement("div");
+  tail.className = "kakao-popup-tail";
+  wrapper.append(tail);
+
+  const overlay = new kakaoSdk.maps.CustomOverlay({
+    position: new kakaoSdk.maps.LatLng(place.lat, place.lng),
+    content: wrapper,
+    yAnchor: 1.12,
+    xAnchor: 0.5,
+    clickable: true,
+    zIndex: 200,
+  });
+  overlay.setMap(map);
+  activePopup = overlay;
+  activePopup.placeId = place.id;
+}
+
+function closePopup() {
+  if (!activePopup) return;
+  activePopup.setMap(null);
+  activePopup = null;
 }
 
 function setBusy(isBusy) {
