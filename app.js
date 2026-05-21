@@ -16,6 +16,7 @@ const categoryColors = {
   酒馆: "#6d5bd0",
   日料: "#e36b66",
   中餐: "#c98e1c",
+  西餐: "#3a6ea5",
 };
 
 const samplePlaces = [
