@@ -1,4 +1,5 @@
 const STORAGE_KEY = "korean-food-map.places";
+const DEVICE_ID_KEY = "korean-food-map.device-id";
 const SUPABASE_TABLE = "food_places";
 const STORAGE_BUCKET = "food-photos";
 const SEOUL = [37.5665, 126.978];
@@ -6,6 +7,21 @@ const MERGE_RADIUS_METERS = 200;
 const PHOTO_MAX_DIM = 1600;
 const PHOTO_QUALITY = 0.85;
 const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
+
+const deviceId = getOrCreateDeviceId();
+
+function getOrCreateDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
 
 const categoryColors = {
   韩餐: "#2f8756",
@@ -310,6 +326,13 @@ async function addPlace(place) {
 
   try {
     const existing = findSamePlace(place);
+
+    if (existing && (existing.contributors || []).includes(deviceId)) {
+      setStatus("你已经推荐过这家店啦", "warn");
+      setBusy(false);
+      return;
+    }
+
     let resultId;
     let merged = false;
 
@@ -325,11 +348,12 @@ async function addPlace(place) {
       resultId = existing.id;
       merged = true;
     } else {
+      const fresh = { ...place, submission_count: 1, contributors: [deviceId] };
       if (isCloudMode) {
-        const data = await db.insertPlaces({ ...place, submission_count: 1 });
+        const data = await db.insertPlaces(fresh);
         places = [normalizePlace(data[0]), ...places];
       } else {
-        places = [{ ...place, submission_count: 1 }, ...places];
+        places = [fresh, ...places];
         saveLocalPlaces();
       }
       resultId = place.id;
@@ -383,12 +407,18 @@ function mergeFields(existing, incoming) {
     ? existing.idol_name
     : (incoming.idol_name || "");
 
+  const prevContributors = Array.isArray(existing.contributors) ? existing.contributors : [];
+  const contributors = prevContributors.includes(deviceId)
+    ? prevContributors
+    : [...prevContributors, deviceId];
+
   return {
     rating,
     price,
     note: appendReason(existing.note, incoming.note),
     image_url,
     idol_name,
+    contributors,
     submission_count: newCount,
   };
 }
@@ -529,6 +559,7 @@ function normalizePlace(place) {
     lng: Number(place.lng),
     image_url: place.image_url || "",
     idol_name: place.idol_name || "",
+    contributors: Array.isArray(place.contributors) ? place.contributors : [],
     submission_count: Math.max(1, Number(place.submission_count || 1)),
   };
 }

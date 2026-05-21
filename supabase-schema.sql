@@ -11,6 +11,7 @@ create table if not exists public.food_places (
   submission_count integer not null default 1,
   image_url text default '',
   idol_name text default '',
+  contributors text[] not null default '{}',
   created_at timestamptz not null default now()
 );
 
@@ -22,6 +23,9 @@ alter table public.food_places
 
 alter table public.food_places
   add column if not exists idol_name text default '';
+
+alter table public.food_places
+  add column if not exists contributors text[] not null default '{}';
 
 alter table public.food_places enable row level security;
 
