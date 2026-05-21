@@ -87,6 +87,7 @@ let selectedLatLng = null;
 let draftMarker = null;
 let db = null;
 let isCloudMode = false;
+let cloudConfigured = false;
 const markers = new Map();
 
 let map = null;
@@ -129,6 +130,11 @@ elements.form.addEventListener("submit", async (event) => {
 
   if (!selectedLatLng) {
     elements.coordinateText.textContent = "请先点击地图选择位置";
+    return;
+  }
+
+  if (cloudConfigured && !isCloudMode) {
+    setStatus("云端未连接，无法保存。刷新页面再试。", "warn");
     return;
   }
 
@@ -220,6 +226,15 @@ elements.locate.addEventListener("click", () => {
 });
 
 elements.reset.addEventListener("click", async () => {
+  if (cloudConfigured && !isCloudMode) {
+    setStatus("云端未连接，无法重置。", "warn");
+    return;
+  }
+  const warning = isCloudMode
+    ? "确定要恢复示例数据吗？这会删除云端所有用户添加的美食点（所有设备都会清空）。"
+    : "确定要把本地数据清空、恢复示例吗？";
+  if (!window.confirm(warning)) return;
+
   setBusy(true);
 
   try {
@@ -280,25 +295,29 @@ function setupSupabase() {
   const hasConfig = config.url && config.anonKey && !config.url.includes("YOUR_PROJECT_REF");
 
   if (!hasConfig) {
+    cloudConfigured = false;
     isCloudMode = false;
     setStatus("本地模式：填写 Supabase 配置后可多人同步", "local");
     return;
   }
 
   db = createSupabaseRestClient(config.url, config.anonKey);
+  cloudConfigured = true;
   isCloudMode = true;
-  setStatus("云端同步已连接", "cloud");
+  setStatus("正在连接云端…", "cloud");
 }
 
 async function loadPlaces() {
-  if (isCloudMode) {
+  if (cloudConfigured) {
     try {
       const data = await db.selectPlaces();
+      isCloudMode = true;
       setStatus("云端同步已连接", "cloud");
       return normalizePlaces(data);
     } catch (error) {
       isCloudMode = false;
-      setStatus(`云端连接失败，已切到本地：${error.message}`, "local");
+      setStatus(`云端连接失败：${error.message}（请刷新重试，不会保存到本地）`, "warn");
+      return [];
     }
   }
 
@@ -323,6 +342,12 @@ function saveLocalPlaces() {
 
 async function addPlace(place) {
   setBusy(true);
+
+  if (cloudConfigured && !isCloudMode) {
+    setStatus("云端未连接，无法保存。刷新页面再试。", "warn");
+    setBusy(false);
+    return;
+  }
 
   try {
     const existing = findSamePlace(place);
@@ -461,6 +486,10 @@ function roundTo(value, decimals) {
 }
 
 async function deletePlace(id) {
+  if (cloudConfigured && !isCloudMode) {
+    setStatus("云端未连接，无法删除。", "warn");
+    return;
+  }
   setBusy(true);
 
   try {
