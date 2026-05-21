@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>韩国美食地图</title>
+    <link rel="preconnect" href="https://unpkg.com" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="map-panel" aria-label="韩国美食地图">
+        <div id="map"></div>
+        <div class="map-toolbar" aria-label="地图工具">
+          <button class="icon-button" id="locateButton" type="button" title="定位到我附近">⌖</button>
+          <button class="icon-button" id="seoulButton" type="button" title="回到首尔">◎</button>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="美食点管理">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Korea Food Map</p>
+            <h1>韩国美食地图</h1>
+            <p class="sync-status" id="syncStatus">正在连接数据...</p>
+          </div>
+          <span class="count-pill" id="placeCount">0</span>
+        </header>
+
+        <div class="search-row">
+          <input id="searchInput" type="search" placeholder="搜索店名、地区、菜品" autocomplete="off" />
+          <select id="categoryFilter" aria-label="分类筛选">
+            <option value="all">全部</option>
+            <option value="韩餐">韩餐</option>
+            <option value="烤肉">烤肉</option>
+            <option value="街头小吃">街头小吃</option>
+            <option value="咖啡甜品">咖啡甜品</option>
+            <option value="海鲜">海鲜</option>
+            <option value="酒馆">酒馆</option>
+          </select>
+        </div>
+
+        <form class="place-form" id="placeForm">
+          <div class="form-grid">
+            <label>
+              店名
+              <input id="nameInput" name="name" required placeholder="例如：明洞饺子" />
+            </label>
+            <label>
+              分类
+              <select id="categoryInput" name="category">
+                <option>韩餐</option>
+                <option>烤肉</option>
+                <option>街头小吃</option>
+                <option>咖啡甜品</option>
+                <option>海鲜</option>
+                <option>酒馆</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            推荐菜 / 关键词
+            <input id="dishInput" name="dish" placeholder="刀削面、猪蹄、鱼饼、拿铁..." />
+          </label>
+
+          <div class="form-grid">
+            <label>
+              评分
+              <input id="ratingInput" name="rating" type="number" min="1" max="5" step="0.5" value="4.5" />
+            </label>
+            <label>
+              人均 ₩
+              <input id="priceInput" name="price" type="number" min="0" step="1000" placeholder="15000" />
+            </label>
+          </div>
+
+          <label>
+            备注
+            <textarea id="noteInput" name="note" rows="3" placeholder="排队情况、适合几人、营业时间提醒..."></textarea>
+          </label>
+
+          <div class="coordinate-row">
+            <span id="coordinateText">点击地图选择位置</span>
+            <button id="clearDraftButton" type="button">清空</button>
+          </div>
+
+          <button class="primary-button" type="submit">添加到地图</button>
+        </form>
+
+        <section class="list-section" aria-label="地点列表">
+          <div class="section-title">
+            <h2>我的收藏</h2>
+            <button id="resetButton" type="button">恢复示例</button>
+          </div>
+          <div class="place-list" id="placeList"></div>
+        </section>
+      </aside>
+    </main>
+
+    <template id="placeTemplate">
+      <article class="place-card">
+        <button class="place-main" type="button">
+          <span class="place-title"></span>
+          <span class="place-meta"></span>
+          <span class="place-note"></span>
+        </button>
+        <button class="delete-button" type="button" title="删除">×</button>
+      </article>
+    </template>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    ></script>
+    <script src="./config.js?v=20260521"></script>
+    <script src="./app.js?v=20260521"></script>
+  </body>
+</html>
