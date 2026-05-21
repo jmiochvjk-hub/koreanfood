@@ -1,7 +1,10 @@
 const STORAGE_KEY = "korean-food-map.places";
 const SUPABASE_TABLE = "food_places";
+const STORAGE_BUCKET = "food-photos";
 const SEOUL = [37.5665, 126.978];
 const MERGE_RADIUS_METERS = 200;
+const PHOTO_MAX_DIM = 1600;
+const PHOTO_QUALITY = 0.85;
 const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 
 const categoryColors = {
@@ -102,7 +105,13 @@ const elements = {
   addressSearch: document.querySelector("#addressSearchInput"),
   addressSearchButton: document.querySelector("#addressSearchButton"),
   addressResults: document.querySelector("#addressSearchResults"),
+  photo: document.querySelector("#photoInput"),
+  photoPreview: document.querySelector("#photoPreview"),
 };
+
+let pendingPhotoBlob = null;
+let pendingPhotoObjectUrl = null;
+let kakaoReadyPromise = null;
 
 map.on("click", (event) => {
   setDraftLocation(event.latlng);
@@ -125,6 +134,23 @@ elements.form.addEventListener("submit", async (event) => {
     return;
   }
 
+  setBusy(true);
+  let imageUrl = "";
+  try {
+    if (pendingPhotoBlob) {
+      if (!isCloudMode) {
+        setStatus("本地模式下暂不支持图片，已忽略图片继续保存", "local");
+      } else {
+        setStatus("正在上传图片…", "cloud");
+        imageUrl = await uploadFoodPhoto(pendingPhotoBlob);
+      }
+    }
+  } catch (error) {
+    setStatus(`图片上传失败：${error.message}`, "cloud");
+    setBusy(false);
+    return;
+  }
+
   const place = {
     id: crypto.randomUUID(),
     name: elements.name.value.trim(),
@@ -135,6 +161,7 @@ elements.form.addEventListener("submit", async (event) => {
     note: reason,
     lat: Number(selectedLatLng.lat.toFixed(6)),
     lng: Number(selectedLatLng.lng.toFixed(6)),
+    image_url: imageUrl,
   };
 
   await addPlace(place);
@@ -150,6 +177,11 @@ elements.addressSearch.addEventListener("keydown", (event) => {
     event.preventDefault();
     runAddressSearch();
   }
+});
+
+elements.photo.addEventListener("change", () => {
+  const file = elements.photo.files && elements.photo.files[0];
+  setPendingPhoto(file || null);
 });
 
 elements.seoul.addEventListener("click", () => {
@@ -283,6 +315,7 @@ async function addPlace(place) {
 
     elements.form.reset();
     elements.rating.value = "4.5";
+    setPendingPhoto(null);
     clearDraftLocation();
     showAddressResults(null);
     render();
@@ -320,10 +353,15 @@ function mergeFields(existing, incoming) {
       : incoming.price;
   }
 
+  const image_url = existing.image_url && existing.image_url.length
+    ? existing.image_url
+    : (incoming.image_url || "");
+
   return {
     rating,
     price,
     note: appendReason(existing.note, incoming.note),
+    image_url,
     submission_count: newCount,
   };
 }
@@ -462,6 +500,7 @@ function normalizePlace(place) {
     note: place.note || "",
     lat: Number(place.lat),
     lng: Number(place.lng),
+    image_url: place.image_url || "",
     submission_count: Math.max(1, Number(place.submission_count || 1)),
   };
 }
@@ -502,18 +541,10 @@ async function runAddressSearch() {
   elements.addressSearchButton.textContent = "搜索中";
 
   try {
-    const params = new URLSearchParams({
-      q: query,
-      format: "json",
-      limit: "6",
-      addressdetails: "1",
-      namedetails: "1",
-      "accept-language": "ko,zh-CN,en",
-      countrycodes: "kr",
-    });
-    const response = await fetch(`${NOMINATIM_ENDPOINT}?${params}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const results = await response.json();
+    const kakao = await ensureKakaoSdk();
+    const results = kakao
+      ? await kakaoKeywordSearch(kakao, query)
+      : await nominatimSearch(query);
     showAddressResults(results);
   } catch (error) {
     showAddressResults(null, `搜索失败：${error.message}`);
@@ -521,6 +552,70 @@ async function runAddressSearch() {
     elements.addressSearchButton.disabled = false;
     elements.addressSearchButton.textContent = "搜索";
   }
+}
+
+function ensureKakaoSdk() {
+  if (kakaoReadyPromise) return kakaoReadyPromise;
+  const key = window.KAKAO_JS_KEY;
+  if (!key) {
+    kakaoReadyPromise = Promise.resolve(null);
+    return kakaoReadyPromise;
+  }
+
+  kakaoReadyPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    script.onload = () => {
+      if (!window.kakao || !window.kakao.maps) {
+        resolve(null);
+        return;
+      }
+      window.kakao.maps.load(() => resolve(window.kakao));
+    };
+    script.onerror = () => resolve(null);
+    document.head.append(script);
+  });
+
+  return kakaoReadyPromise;
+}
+
+function kakaoKeywordSearch(kakao, query) {
+  return new Promise((resolve, reject) => {
+    const places = new kakao.maps.services.Places();
+    places.keywordSearch(query, (data, status) => {
+      if (status === kakao.maps.services.Status.OK) {
+        const adapted = data.slice(0, 8).map((item) => ({
+          lat: Number(item.y),
+          lon: Number(item.x),
+          name: item.place_name,
+          display_name: item.road_address_name || item.address_name,
+          extra: item.category_name,
+        }));
+        resolve(adapted);
+        return;
+      }
+      if (status === kakao.maps.services.Status.ZERO_RESULT) {
+        resolve([]);
+        return;
+      }
+      reject(new Error(`Kakao 错误：${status}`));
+    });
+  });
+}
+
+async function nominatimSearch(query) {
+  const params = new URLSearchParams({
+    q: query,
+    format: "json",
+    limit: "6",
+    addressdetails: "1",
+    namedetails: "1",
+    "accept-language": "ko,zh-CN,en",
+    countrycodes: "kr",
+  });
+  const response = await fetch(`${NOMINATIM_ENDPOINT}?${params}`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
 }
 
 function showAddressResults(results, errorMessage) {
@@ -551,7 +646,8 @@ function showAddressResults(results, errorMessage) {
 
     const meta = document.createElement("span");
     meta.className = "address-result-meta";
-    meta.textContent = item.display_name || "";
+    const metaParts = [item.extra, item.display_name].filter(Boolean);
+    meta.textContent = metaParts.join(" · ");
 
     button.append(title, meta);
     button.addEventListener("click", () => pickAddressResult(item));
@@ -580,6 +676,93 @@ function pickAddressResult(item) {
 
   elements.addressResults.hidden = true;
   elements.name.focus();
+}
+
+function setPendingPhoto(file) {
+  if (pendingPhotoObjectUrl) {
+    URL.revokeObjectURL(pendingPhotoObjectUrl);
+    pendingPhotoObjectUrl = null;
+  }
+
+  if (!file) {
+    pendingPhotoBlob = null;
+    elements.photoPreview.innerHTML = "";
+    elements.photoPreview.hidden = true;
+    return;
+  }
+
+  pendingPhotoBlob = file;
+  pendingPhotoObjectUrl = URL.createObjectURL(file);
+  elements.photoPreview.innerHTML = "";
+  const img = document.createElement("img");
+  img.src = pendingPhotoObjectUrl;
+  img.alt = "待上传图片预览";
+  elements.photoPreview.append(img);
+  elements.photoPreview.hidden = false;
+}
+
+async function uploadFoodPhoto(file) {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey) {
+    throw new Error("缺少 Supabase 配置");
+  }
+
+  const blob = await resizeImageToBlob(file, PHOTO_MAX_DIM, PHOTO_QUALITY);
+  const path = `${crypto.randomUUID()}.jpg`;
+  const endpoint = `${config.url.replace(/\/$/, "")}/storage/v1/object/${STORAGE_BUCKET}/${path}`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      apikey: config.anonKey,
+      Authorization: `Bearer ${config.anonKey}`,
+      "Content-Type": blob.type || "image/jpeg",
+      "x-upsert": "false",
+    },
+    body: blob,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `HTTP ${response.status}`);
+  }
+
+  return `${config.url.replace(/\/$/, "")}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+}
+
+function resizeImageToBlob(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const width = Math.round(img.width * ratio);
+        const height = Math.round(img.height * ratio);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            blob ? resolve(blob) : reject(new Error("无法生成图片数据"));
+          },
+          "image/jpeg",
+          quality,
+        );
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        reject(error);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("无法读取图片"));
+    };
+    img.src = objectUrl;
+  });
 }
 
 function render() {
@@ -613,6 +796,7 @@ function renderMarkers() {
   filteredPlaces.forEach((place) => {
     const popupHtml = `
       <div class="map-popup">
+        ${place.image_url ? `<img class="map-popup-image" src="${escapeHtml(place.image_url)}" alt="${escapeHtml(place.name)}" loading="lazy" />` : ""}
         <strong>${escapeHtml(place.name)}</strong>
         <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
         <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
@@ -649,6 +833,14 @@ function renderList() {
 
   filteredPlaces.forEach((place) => {
     const card = elements.template.content.firstElementChild.cloneNode(true);
+    const thumb = card.querySelector(".place-thumb");
+    if (place.image_url) {
+      thumb.style.backgroundImage = `url(${JSON.stringify(place.image_url)})`;
+      thumb.dataset.empty = "false";
+    } else {
+      thumb.style.backgroundImage = "";
+      thumb.dataset.empty = "true";
+    }
     card.querySelector(".place-title").textContent = place.name;
     card.querySelector(".place-meta").textContent =
       `${place.category} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}`;

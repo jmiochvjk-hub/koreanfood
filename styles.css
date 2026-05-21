@@ -310,6 +310,40 @@ textarea:focus {
   text-align: center;
 }
 
+.photo-field input[type="file"] {
+  padding: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.photo-preview {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.photo-preview[hidden] {
+  display: none;
+}
+
+.photo-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 6px;
+}
+
+.map-popup-image {
+  display: block;
+  width: 100%;
+  max-height: 130px;
+  margin: 0 0 6px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -372,12 +406,23 @@ label {
 
 .place-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: 60px minmax(0, 1fr) 36px;
   align-items: stretch;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
+}
+
+.place-thumb {
+  background-color: #eef2ef;
+  background-size: cover;
+  background-position: center;
+}
+
+.place-thumb[data-empty="true"] {
+  background-image: linear-gradient(135deg, #eef2ef 25%, #e2e8e3 25%, #e2e8e3 50%, #eef2ef 50%, #eef2ef 75%, #e2e8e3 75%);
+  background-size: 12px 12px;
 }
 
 .place-main {

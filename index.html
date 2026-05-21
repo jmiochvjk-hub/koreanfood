@@ -96,6 +96,12 @@
             <textarea id="noteInput" name="note" rows="3" required placeholder="为什么推荐这家？必填——比如：刀切面汤底厚，吃完想喝光"></textarea>
           </label>
 
+          <label class="photo-field">
+            照片（可选）
+            <input id="photoInput" name="photo" type="file" accept="image/*" />
+          </label>
+          <div id="photoPreview" class="photo-preview" hidden></div>
+
           <div class="coordinate-row">
             <span id="coordinateText">点击地图选择位置</span>
             <button id="clearDraftButton" type="button">清空</button>
@@ -116,6 +122,7 @@
 
     <template id="placeTemplate">
       <article class="place-card">
+        <div class="place-thumb" data-empty="true" aria-hidden="true"></div>
         <button class="place-main" type="button">
           <span class="place-title"></span>
           <span class="place-meta"></span>
@@ -128,7 +135,7 @@
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     ></script>
-    <script src="./config.js?v=20260521b"></script>
-    <script src="./app.js?v=20260521d"></script>
+    <script src="./config.js?v=20260521c"></script>
+    <script src="./app.js?v=20260521e"></script>
   </body>
 </html>
