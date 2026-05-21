@@ -346,19 +346,23 @@ function setupSupabase() {
 }
 
 async function loadPlaces() {
+  console.log("[loadPlaces] start", { cloudConfigured, isCloudMode });
   if (cloudConfigured) {
     try {
       const data = await db.selectPlaces();
       isCloudMode = true;
+      console.log("[loadPlaces] cloud SELECT ok", { rows: data.length });
       setStatus("云端同步已连接", "cloud");
       return normalizePlaces(data);
     } catch (error) {
       isCloudMode = false;
+      console.error("[loadPlaces] cloud SELECT failed", error);
       setStatus(`云端连接失败：${error.message}（请刷新重试，不会保存到本地）`, "warn");
       return [];
     }
   }
 
+  console.log("[loadPlaces] LOCAL fallback (no cloud config)");
   return loadLocalPlaces();
 }
 
@@ -380,6 +384,13 @@ function saveLocalPlaces() {
 
 async function addPlace(place) {
   setBusy(true);
+
+  console.log("[addPlace] entry", {
+    cloudConfigured,
+    isCloudMode,
+    deviceId,
+    place,
+  });
 
   if (cloudConfigured && !isCloudMode) {
     setStatus("云端未连接，无法保存。刷新页面再试。", "warn");
@@ -413,9 +424,12 @@ async function addPlace(place) {
     } else {
       const fresh = { ...place, submission_count: 1, contributors: [deviceId] };
       if (isCloudMode) {
+        console.log("[addPlace] sending INSERT", fresh);
         const data = await db.insertPlaces(fresh);
+        console.log("[addPlace] INSERT response", data);
         places = [normalizePlace(data[0]), ...places];
       } else {
+        console.log("[addPlace] LOCAL save", fresh);
         places = [fresh, ...places];
         saveLocalPlaces();
       }
@@ -433,8 +447,10 @@ async function addPlace(place) {
     const where = isCloudMode ? "云端" : "本地";
     const verb = merged ? "已合并评分到现有点" : "已保存";
     setStatus(`${verb}（${where}）`, isCloudMode ? "cloud" : "local");
+    console.log("[addPlace] done", { resultId, merged, where, placesLen: places.length });
   } catch (error) {
-    setStatus(`添加失败：${error.message}`, isCloudMode ? "cloud" : "local");
+    console.error("[addPlace] error", error);
+    setStatus(`添加失败：${error.message}`, "warn");
   } finally {
     setBusy(false);
   }
