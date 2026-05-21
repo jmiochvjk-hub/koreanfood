@@ -534,6 +534,14 @@ label {
   cursor: pointer;
 }
 
+.place-list[data-view="all"] .delete-button {
+  display: none;
+}
+
+.place-list[data-view="all"] .favorite-button {
+  border-bottom: 0;
+}
+
 .kakao-popup {
   position: relative;
   min-width: 220px;

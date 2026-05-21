@@ -971,6 +971,7 @@ function renderMarkers() {
 
 function renderList() {
   const filteredPlaces = getFilteredPlaces();
+  elements.list.dataset.view = viewMode;
   elements.list.innerHTML = "";
 
   if (!filteredPlaces.length) {
