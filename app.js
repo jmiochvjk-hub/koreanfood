@@ -883,7 +883,7 @@ function setStatus(message, mode) {
 }
 
 function formatRating(rating) {
-  return rating ? `${rating.toFixed(1)}分` : "未评分";
+  return rating ? `${rating.toFixed(2)}分` : "未评分";
 }
 
 function formatCount(count) {
