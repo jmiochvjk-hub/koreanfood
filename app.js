@@ -135,6 +135,7 @@ let favoriteIds = loadSet(FAVORITES_KEY);
 let localReviews = loadArray(REVIEWS_KEY);
 let canonicalPlaceIds = new Map();
 let cloudReviewCache = new Map();
+let moderationRetryAt = new Map();
 let favoritesOnly = false;
 let toastTimer = null;
 let photoObjectUrls = [];
@@ -1412,7 +1413,7 @@ function renderDetailReviews(item) {
   elements.detailReviewSummary.textContent = cache?.status === "loading"
     ? "正在读取评价…"
     : reviews.length
-      ? `${reviews.length} 条体验${pendingCount ? ` · ${pendingCount} 条待审核` : ""}`
+      ? `${reviews.length} 条体验${pendingCount ? ` · ${pendingCount} 条安全检查中` : ""}`
       : "等待第一条真实体验";
   elements.detailReviewList.replaceChildren();
   if (!reviews.length) {
@@ -1455,7 +1456,7 @@ function createReviewCard(review) {
   }
   const meta = document.createElement("small");
   meta.textContent = review.moderationStatus === "pending"
-    ? "仅你可见 · 等待审核"
+    ? "仅你可见 · 正在自动安全检查"
     : review.source === "local"
       ? `${review.photoCount || review.photos?.length || 0} 张实拍 · 当前设备旧评价`
       : `${review.photos?.length || 0} 张实拍`;
@@ -1481,12 +1482,18 @@ async function loadCloudReviews(item, force = false) {
   if (!target || !config.url || !config.anonKey) return;
   const key = reviewCacheKey(item);
   const existing = cloudReviewCache.get(key);
-  if (!force && (existing?.status === "loading" || existing?.status === "ready")) return;
+  if (!force && existing?.status === "loading") return;
+  if (!force && existing?.status === "ready") {
+    const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub;
+    const pendingReview = existing.reviews.find((review) => review.userId === userId && review.moderationStatus === "pending");
+    if (pendingReview) retryPendingModeration(item, pendingReview.id);
+    return;
+  }
   cloudReviewCache.set(key, { status: "loading", reviews: existing?.reviews || [] });
   if (detailItem?.id === item.id) renderDetailReviews(item);
   const baseUrl = config.url.replace(/\/$/, "");
   try {
-    const endpoint = `${baseUrl}/rest/v1/reviews?select=id,rating,body,moderation_status,created_at&${target.field}=eq.${encodeURIComponent(target.id)}&order=created_at.desc`;
+    const endpoint = `${baseUrl}/rest/v1/reviews?select=id,user_id,rating,body,moderation_status,created_at&${target.field}=eq.${encodeURIComponent(target.id)}&order=created_at.desc`;
     const response = await fetch(endpoint, { headers: supabaseHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const rows = await response.json();
@@ -1506,6 +1513,7 @@ async function loadCloudReviews(item, force = false) {
     }
     const reviews = rows.map((row) => ({
       id: row.id,
+      userId: row.user_id,
       rating: Number(row.rating),
       text: row.body,
       moderationStatus: row.moderation_status,
@@ -1514,11 +1522,44 @@ async function loadCloudReviews(item, force = false) {
       source: "cloud",
     }));
     cloudReviewCache.set(key, { status: "ready", reviews });
+    const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub;
+    const pendingReview = rows.find((row) => row.user_id === userId && row.moderation_status === "pending");
+    if (pendingReview) retryPendingModeration(item, pendingReview.id);
   } catch (error) {
     cloudReviewCache.set(key, { status: "error", reviews: existing?.reviews || [] });
     console.warn("[reviews] cloud load failed", error);
   }
   if (detailItem?.id === item.id) renderDetailReviews(item);
+}
+
+async function requestReviewModeration(reviewId) {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey || !authSession?.access_token) throw new Error("AUTH_REQUIRED");
+  await refreshAuthSessionIfNeeded();
+  if (!authSession?.access_token) throw new Error("AUTH_REQUIRED");
+  const response = await fetch(`${config.url.replace(/\/$/, "")}/functions/v1/moderate-review`, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewId }),
+  });
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(value.code || `MODERATION_HTTP_${response.status}`);
+  return value;
+}
+
+async function retryPendingModeration(item, reviewId) {
+  const lastAttempt = moderationRetryAt.get(reviewId) || 0;
+  if (Date.now() - lastAttempt < 5 * 60 * 1000) return;
+  moderationRetryAt.set(reviewId, Date.now());
+  try {
+    const result = await requestReviewModeration(reviewId);
+    if (result.status !== "published" && result.status !== "rejected") return;
+    cloudReviewCache.delete(reviewCacheKey(item));
+    await loadCloudReviews(item, true);
+    showToast(result.status === "published" ? "你的评价已通过自动检查并发布。" : "评价包含不适合公开的色情或暴力内容，未发布。");
+  } catch (error) {
+    console.warn("[review] automatic moderation retry failed", error);
+  }
 }
 
 async function createSignedReviewPhotoUrl(storagePath) {
@@ -1643,12 +1684,34 @@ async function saveReview(event) {
     });
     if (!photoRecordResponse.ok) throw new Error(`照片记录保存失败 HTTP ${photoRecordResponse.status}`);
 
+    elements.submitReview.textContent = "正在安全检查…";
+    let moderationResult;
+    try {
+      moderationResult = await requestReviewModeration(reviewId);
+    } catch (moderationError) {
+      cloudReviewCache.delete(reviewCacheKey(item));
+      closeReviewModal();
+      showToast("评价已保存，自动检查暂时繁忙；再次打开该品目时会自动重试。");
+      console.warn("[review] automatic moderation unavailable", moderationError);
+      return;
+    }
+
     cloudReviewCache.delete(reviewCacheKey(item));
+    if (moderationResult.status === "rejected") {
+      reviewId = "";
+      uploadedPaths.length = 0;
+      throw new Error("CONTENT_REJECTED");
+    }
     closeReviewModal();
-    showToast("评价已提交，审核通过后会公开展示。 ");
+    showToast("评价已通过自动检查并发布。 ");
   } catch (error) {
     await discardReviewDraft(reviewId, uploadedPaths);
-    showToast(error.message === "DUPLICATE_REVIEW" ? "每个品目目前限写一条评价；编辑功能即将开放。" : "评价提交失败，请检查照片后重试。 ");
+    const message = error.message === "DUPLICATE_REVIEW"
+      ? "每个品目目前限写一条评价；编辑功能即将开放。"
+      : error.message === "CONTENT_REJECTED"
+        ? "评价包含不适合公开的色情或暴力内容，请修改后重试。"
+        : "评价提交失败，请检查照片后重试。 ";
+    showToast(message);
     console.warn("[review] submit failed", error);
   } finally {
     elements.submitReview.disabled = false;

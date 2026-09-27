@@ -46,8 +46,14 @@
 - Redirect URLs：部署阶段加入 GitHub Pages 地址和
   `https://banfantujian.com/**`
 
-评价记录和压缩后的实拍照片会写入 Supabase，并以 `pending` 状态等待审核；只有
-发布状态的评价会向其他用户展示。旧版本留在浏览器本机的评价仍会继续显示。
+评价记录和压缩后的实拍照片会先以 `pending` 状态写入 Supabase，再由服务端自动
+检查文字和图片中的色情、未成年人色情、暴力及血腥暴力内容。正常评价会立即转为
+`published` 并公开；命中规则的评价及照片会被删除，用户可以修改后重新提交。
+旧版本留在浏览器本机的评价仍会继续显示。
+
+自动审核由 `supabase/functions/moderate-review` 执行。生产环境必须在 Supabase
+Edge Function Secrets 中配置 `OPENAI_API_KEY`；密钥不能写入 `config.js` 或其他
+浏览器可读取的文件。
 
 ## 本地预览
 

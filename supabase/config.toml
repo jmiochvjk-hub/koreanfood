@@ -1,0 +1,4 @@
+project_id = "korean-food-map"
+
+[functions.moderate-review]
+verify_jwt = true
