@@ -7,7 +7,7 @@
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
   <title>伴饭 · 来韩国照着选</title>
   <link rel="stylesheet" href="./tokens.css?v=20260927h" />
-  <link rel="stylesheet" href="./redesign.css?v=20260927h" />
+  <link rel="stylesheet" href="./redesign.css?v=20260927l" />
 </head>
 <body data-channel="food">
   <header class="site-header">
@@ -22,6 +22,7 @@
       </label>
       <div class="header-actions">
         <button id="openFavoritesButton" class="text-button" type="button">♡ 收藏</button>
+        <button id="accountButton" class="text-button account-button" type="button">登录</button>
         <button id="openReviewButton" class="primary-button" type="button">写评价</button>
       </div>
     </div>
@@ -131,6 +132,47 @@
 
   <button class="mobile-review-button" id="mobileReviewButton" type="button">＋ 晒图评价</button>
 
+  <div class="auth-modal" id="authModal" hidden>
+    <button class="modal-backdrop" id="authBackdrop" type="button" aria-label="关闭登录"></button>
+    <section class="auth-sheet" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <button id="closeAuthButton" class="close-button auth-close" type="button" aria-label="关闭">×</button>
+      <div class="auth-intro">
+        <h2 id="authTitle">留下真正有用的体验。</h2>
+        <p>浏览不需要注册。登录后才能发布带图评价、补充地点，并在之后同步收藏。</p>
+        <ul>
+          <li>评价必须包含真实照片</li>
+          <li>商品评价绑定已有品目</li>
+          <li>新地点仅开放在美食地图补充</li>
+        </ul>
+      </div>
+      <div class="auth-action">
+        <form id="authForm" class="auth-form">
+          <div>
+            <h3>邮箱免密码登录</h3>
+            <p>输入邮箱，我们会发送一次性登录链接。第一次登录会自动创建账号。</p>
+          </div>
+          <label>邮箱地址
+            <input id="authEmail" type="email" autocomplete="email" required placeholder="name@example.com" />
+          </label>
+          <button id="sendAuthLinkButton" class="primary-button" type="submit">发送登录邮件</button>
+          <p class="auth-legal">继续即表示同意遵守社区规则。微信登录将在开放平台资质完成后接入。</p>
+        </form>
+        <div id="authSent" class="auth-state" hidden>
+          <h3>邮件已经发出</h3>
+          <p>请在同一台设备上打开邮件里的登录链接，然后返回伴饭。</p>
+          <button id="changeAuthEmailButton" class="secondary-button" type="button">更换邮箱</button>
+        </div>
+        <div id="authAccount" class="auth-state" hidden>
+          <span>当前账号</span>
+          <h3 id="authAccountEmail"></h3>
+          <p>你已经可以发布带图评价和补充地点。收藏云端同步将在下一步接入。</p>
+          <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
+        </div>
+        <p id="authStatus" class="auth-status" role="status" hidden></p>
+      </div>
+    </section>
+  </div>
+
   <div class="review-modal" id="reviewModal" hidden>
     <button class="modal-backdrop" id="modalBackdrop" type="button" aria-label="关闭评价"></button>
     <section class="review-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
@@ -228,7 +270,7 @@
     </article>
   </template>
 
-  <script src="./config.js?v=20260927k"></script>
-  <script src="./app.js?v=20260927k"></script>
+  <script src="./config.js?v=20260927l"></script>
+  <script src="./app.js?v=20260927l"></script>
 </body>
 </html>

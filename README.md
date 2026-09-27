@@ -30,8 +30,24 @@
 
 迁移顺序和执行时机见 `migrations/README.md`。
 
-不要在登录功能完成前执行
-`migrations/20260927_03_require_auth.sql`，否则当前匿名添加地点会停止工作。
+暂时不要执行 `migrations/20260927_03_require_auth.sql`；等网页与 Flutter 都能
+稳定附带用户会话后再切换，否则旧客户端的地点提交会停止工作。
+
+## 登录配置
+
+网页已接入 Supabase 邮箱免密码登录。浏览和本地收藏无需账号；发布带图评价、
+补充美食地点时才要求登录。
+
+在 Supabase Dashboard 的 Authentication → URL Configuration 中配置：
+
+- Site URL：正式上线后填写 `https://banfantujian.com`
+- Redirect URLs：开发阶段加入 `http://127.0.0.1:4173/**`
+- Redirect URLs：部署阶段加入 GitHub Pages 地址和
+  `https://banfantujian.com/**`
+
+确认邮件登录能在网页和 Flutter 客户端完成后，再执行
+`migrations/20260927_03_require_auth.sql` 关闭匿名地点写入。评价照片与云端同步
+仍是下一阶段；当前网页评价继续保存在本机。
 
 ## 本地预览
 

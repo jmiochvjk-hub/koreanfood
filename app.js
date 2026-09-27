@@ -1,5 +1,6 @@
 const FAVORITES_KEY = "banfan.catalog.favorites";
 const REVIEWS_KEY = "banfan.catalog.reviews";
+const AUTH_SESSION_KEY = "banfan.auth.session";
 const SUPABASE_TABLE = "food_places";
 const CATALOG_VIEW = "catalog_item_cards";
 const PAGE_SIZE = 24;
@@ -92,8 +93,21 @@ const elements = {
   loadMore: document.querySelector("#loadMoreButton"),
   template: document.querySelector("#catalogCardTemplate"),
   favorites: document.querySelector("#openFavoritesButton"),
+  account: document.querySelector("#accountButton"),
   openReview: document.querySelector("#openReviewButton"),
   mobileReview: document.querySelector("#mobileReviewButton"),
+  authModal: document.querySelector("#authModal"),
+  authBackdrop: document.querySelector("#authBackdrop"),
+  closeAuth: document.querySelector("#closeAuthButton"),
+  authForm: document.querySelector("#authForm"),
+  authEmail: document.querySelector("#authEmail"),
+  sendAuthLink: document.querySelector("#sendAuthLinkButton"),
+  authSent: document.querySelector("#authSent"),
+  changeAuthEmail: document.querySelector("#changeAuthEmailButton"),
+  authAccount: document.querySelector("#authAccount"),
+  authAccountEmail: document.querySelector("#authAccountEmail"),
+  signOut: document.querySelector("#signOutButton"),
+  authStatus: document.querySelector("#authStatus"),
   modal: document.querySelector("#reviewModal"),
   backdrop: document.querySelector("#modalBackdrop"),
   closeReview: document.querySelector("#closeReviewButton"),
@@ -125,6 +139,7 @@ const elements = {
 };
 
 let currentChannel = "food";
+let authSession = loadAuthSession();
 let activeFilter = "全部";
 let cloudFoodItems = [];
 let cloudCatalogItems = { beauty: [], life: [], fashion: [] };
@@ -181,6 +196,12 @@ elements.favorites.addEventListener("click", () => {
   render();
   document.querySelector(".catalog-section").scrollIntoView({ behavior: "smooth" });
 });
+elements.account.addEventListener("click", openAuthModal);
+elements.authBackdrop.addEventListener("click", closeAuthModal);
+elements.closeAuth.addEventListener("click", closeAuthModal);
+elements.authForm.addEventListener("submit", sendMagicLink);
+elements.changeAuthEmail.addEventListener("click", showAuthForm);
+elements.signOut.addEventListener("click", signOut);
 elements.openReview.addEventListener("click", () => openReviewModal());
 elements.mobileReview.addEventListener("click", () => openReviewModal());
 elements.closeReview.addEventListener("click", closeReviewModal);
@@ -204,10 +225,13 @@ elements.missingItem.addEventListener("click", () => {
 });
 elements.form.addEventListener("submit", saveReview);
 document.addEventListener("keydown", (event) => {
-  const activeModal = !elements.modal.hidden ? elements.modal : (!elements.detailModal.hidden ? elements.detailModal : null);
+  const activeModal = !elements.authModal.hidden
+    ? elements.authModal
+    : (!elements.modal.hidden ? elements.modal : (!elements.detailModal.hidden ? elements.detailModal : null));
   if (!activeModal) return;
   if (event.key === "Escape") {
-    if (activeModal === elements.modal) closeReviewModal();
+    if (activeModal === elements.authModal) closeAuthModal();
+    else if (activeModal === elements.modal) closeReviewModal();
     else closeDetailModal();
     return;
   }
@@ -215,6 +239,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 async function init() {
+  consumeAuthRedirect();
+  await refreshAuthSessionIfNeeded();
+  updateAccountUI();
   renderFilters();
   render();
   await Promise.all([loadFoodItems(), loadCatalogItems()]);
@@ -224,7 +251,195 @@ async function init() {
 
 function supabaseHeaders() {
   const config = window.SUPABASE_CONFIG || {};
-  return { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` };
+  const bearer = authSession?.access_token || config.anonKey;
+  return { apikey: config.anonKey, Authorization: `Bearer ${bearer}` };
+}
+
+function loadAuthSession() {
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || "null");
+    return value && value.access_token && value.refresh_token ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function consumeAuthRedirect() {
+  if (!window.location.hash) return;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const authError = params.get("error_description");
+  if (authError) {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    showToast("登录链接无效或已过期，请重新发送。 ");
+    return;
+  }
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  if (!accessToken || !refreshToken) return;
+  const expiresIn = Number(params.get("expires_in") || 3600);
+  const payload = parseJwt(accessToken);
+  authSession = {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: Math.floor(Date.now() / 1000) + expiresIn,
+    user: { id: payload.sub || "", email: payload.email || "" },
+  };
+  persistAuthSession();
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  showToast("登录成功，可以发布真实体验了。");
+}
+
+function parseJwt(token) {
+  try {
+    const raw = token.split(".")[1].replaceAll("-", "+").replaceAll("_", "/");
+    const base64 = raw.padEnd(raw.length + ((4 - (raw.length % 4)) % 4), "=");
+    return JSON.parse(decodeURIComponent(atob(base64).split("").map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join("")));
+  } catch {
+    return {};
+  }
+}
+
+function persistAuthSession() {
+  if (authSession) localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(authSession));
+  else localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+async function refreshAuthSessionIfNeeded() {
+  if (!authSession) return;
+  const expiresAt = Number(authSession.expires_at || 0);
+  if (expiresAt > Math.floor(Date.now() / 1000) + 90) return;
+  const config = window.SUPABASE_CONFIG || {};
+  try {
+    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: authSession.refresh_token }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const value = await response.json();
+    authSession = {
+      access_token: value.access_token,
+      refresh_token: value.refresh_token,
+      expires_at: Math.floor(Date.now() / 1000) + Number(value.expires_in || 3600),
+      user: value.user || authSession.user,
+    };
+    persistAuthSession();
+  } catch (error) {
+    console.warn("[auth] session refresh failed", error);
+    authSession = null;
+    persistAuthSession();
+  }
+}
+
+function updateAccountUI() {
+  const email = authSession?.user?.email || parseJwt(authSession?.access_token || "").email || "";
+  elements.account.textContent = email ? email.split("@")[0].slice(0, 10) : "登录";
+  elements.account.setAttribute("aria-label", email ? `当前账号 ${email}` : "登录或注册");
+}
+
+function openAuthModal() {
+  hideAuthStatus();
+  if (authSession) showAuthAccount();
+  else showAuthForm();
+  const focusTarget = authSession ? elements.signOut : elements.authEmail;
+  activateModal(elements.authModal, focusTarget);
+}
+
+function closeAuthModal() {
+  deactivateModal(elements.authModal);
+  hideAuthStatus();
+}
+
+function showAuthForm() {
+  elements.authForm.hidden = false;
+  elements.authSent.hidden = true;
+  elements.authAccount.hidden = true;
+  elements.authEmail.disabled = false;
+  elements.sendAuthLink.disabled = false;
+  elements.sendAuthLink.textContent = "发送登录邮件";
+  hideAuthStatus();
+  if (!elements.authModal.hidden) elements.authEmail.focus();
+}
+
+function showAuthAccount() {
+  const email = authSession?.user?.email || parseJwt(authSession?.access_token || "").email || "已登录用户";
+  elements.authForm.hidden = true;
+  elements.authSent.hidden = true;
+  elements.authAccount.hidden = false;
+  elements.authAccountEmail.textContent = email;
+}
+
+async function sendMagicLink(event) {
+  event.preventDefault();
+  const email = elements.authEmail.value.trim().toLowerCase();
+  const config = window.SUPABASE_CONFIG || {};
+  if (!email) return;
+  if (!config.url || !config.anonKey) return showAuthStatus("登录服务尚未连接，请稍后再试。");
+  elements.authEmail.disabled = true;
+  elements.sendAuthLink.disabled = true;
+  elements.sendAuthLink.textContent = "正在发送…";
+  hideAuthStatus();
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  try {
+    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+      method: "POST",
+      headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, create_user: true }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.msg || error.message || `HTTP ${response.status}`);
+    }
+    elements.authForm.hidden = true;
+    elements.authSent.hidden = false;
+    showAuthStatus(`登录链接已发送到 ${email}。`);
+  } catch (error) {
+    elements.authEmail.disabled = false;
+    elements.sendAuthLink.disabled = false;
+    elements.sendAuthLink.textContent = "重新发送";
+    showAuthStatus(error.message.includes("rate") ? "发送太频繁，请一分钟后再试。" : "邮件发送失败，请检查地址或稍后重试。");
+    console.error("[auth] magic link failed", error);
+  }
+}
+
+async function signOut() {
+  const config = window.SUPABASE_CONFIG || {};
+  const token = authSession?.access_token;
+  elements.signOut.disabled = true;
+  try {
+    if (token) {
+      await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/logout`, {
+        method: "POST",
+        headers: { apikey: config.anonKey, Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch (error) {
+    console.warn("[auth] remote sign-out failed", error);
+  } finally {
+    authSession = null;
+    persistAuthSession();
+    elements.signOut.disabled = false;
+    updateAccountUI();
+    closeAuthModal();
+    showToast("已退出登录，仍可继续浏览和使用本地收藏。");
+  }
+}
+
+function showAuthStatus(message) {
+  elements.authStatus.textContent = message;
+  elements.authStatus.hidden = false;
+}
+
+function hideAuthStatus() {
+  elements.authStatus.hidden = true;
+  elements.authStatus.textContent = "";
+}
+
+function requireUser() {
+  if (authSession) return true;
+  openAuthModal();
+  showAuthStatus("发布内容前请先登录；浏览和收藏不受影响。");
+  return false;
 }
 
 async function loadFoodItems() {
@@ -701,6 +916,7 @@ function openMapPopup(item) {
 }
 
 function startAddingPlace() {
+  if (!requireUser()) return;
   addingPlace = true;
   selectedCoordinates = null;
   elements.addPlaceBar.hidden = false;
@@ -762,6 +978,7 @@ function selectPlaceCoordinates(lat, lng) {
 }
 
 async function saveNewPlace() {
+  if (!requireUser()) return;
   const name = elements.placeName.value.trim();
   const note = elements.placeNote.value.trim();
   if (!selectedCoordinates) return showToast("请先在地图上选择位置。");
@@ -786,16 +1003,29 @@ async function saveNewPlace() {
     submission_count: 0,
   };
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`, {
+    const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`;
+    const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub || "";
+    let response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(payload),
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ ...payload, created_by: userId }),
     });
+
+    // During the rollout, the legacy table may still be on the phase-one schema:
+    // authenticated inserts are not granted yet and `created_by` does not exist.
+    // Keep that deployment working until the final auth migration is applied.
+    if (!response.ok && [400, 401, 403].includes(response.status)) {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          apikey: config.anonKey,
+          Authorization: `Bearer ${config.anonKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(payload),
+      });
+    }
     if (!response.ok) throw new Error(await response.text());
     const rows = await response.json();
     cloudFoodItems.unshift(mapFoodPlace(rows[0] || payload));
@@ -893,6 +1123,7 @@ function formatDate(value) {
 }
 
 function openReviewModal(item = null) {
+  if (!requireUser()) return;
   const available = allCatalogItems();
   if (!available.length) {
     showToast("品目正在导入，完成后才能绑定评价。");
@@ -913,6 +1144,7 @@ function closeReviewModal() {
 
 async function saveReview(event) {
   event.preventDefault();
+  if (!requireUser()) return;
   const title = elements.itemInput.value.trim();
   const item = allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
   if (!item) {
