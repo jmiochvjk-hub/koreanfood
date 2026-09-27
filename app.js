@@ -45,7 +45,7 @@ const elements = {
   syncStatus: document.querySelector("#syncStatus"),
   count: document.querySelector("#itemCount"),
   filters: document.querySelector("#filterChips"),
-  sort: document.querySelector("#sortSelect"),
+  toolbar: document.querySelector("#catalogToolbar"),
   foodViewSwitch: document.querySelector("#foodViewSwitch"),
   foodMapPanel: document.querySelector("#foodMapPanel"),
   mapStatus: document.querySelector("#mapStatus"),
@@ -126,6 +126,7 @@ let authResendRemaining = 0;
 let authResendTimer = null;
 let authSending = false;
 let activeFilter = "全部";
+let searchActive = false;
 let foodLoading = true;
 let catalogLoading = true;
 let cloudFoodItems = [];
@@ -155,8 +156,13 @@ let visibleLimit = PAGE_SIZE;
 elements.channelTriggers.forEach((entry) => {
   entry.addEventListener("click", () => switchChannel(entry.dataset.channel));
 });
-elements.search.addEventListener("input", () => resetAndRender());
-elements.sort.addEventListener("change", () => resetAndRender());
+elements.search.addEventListener("input", () => {
+  const hasQuery = Boolean(elements.search.value.trim());
+  if (hasQuery && foodView === "map") foodView = "list";
+  resetAndRender();
+  if (hasQuery && !searchActive) elements.catalogSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  searchActive = hasQuery;
+});
 elements.loadMore.addEventListener("click", () => {
   visibleLimit += PAGE_SIZE;
   render();
@@ -637,7 +643,10 @@ async function loadCatalogItems() {
 }
 
 function hydrateHeroShowcase() {
-  const featured = (cloudCatalogItems.beauty || []).filter((item) => item.imageUrl).slice(0, elements.heroSlots.length);
+  const featured = [...(cloudCatalogItems.beauty || [])]
+    .filter((item) => item.imageUrl)
+    .sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating || a.featuredOrder - b.featuredOrder)
+    .slice(0, elements.heroSlots.length);
   elements.heroSlots.forEach((slot, index) => {
     const item = featured[index];
     if (!item) return;
@@ -687,6 +696,7 @@ function mapFoodPlace(place) {
   const rawPrice = Number(place.price || 0);
   return {
     id: String(place.id),
+    channel: "food",
     canonicalPlaceId: canonicalPlaceIds.get(String(place.id)) || "",
     title: place.name || "未命名品目",
     category: place.category || "美食",
@@ -711,6 +721,7 @@ function switchChannel(channel) {
   favoritesOnly = false;
   document.body.dataset.channel = channel;
   elements.search.value = "";
+  searchActive = false;
   elements.favorites.textContent = "收藏";
   elements.favorites.setAttribute("aria-pressed", "false");
   elements.channelTriggers.forEach((entry) => {
@@ -743,11 +754,11 @@ function switchChannel(channel) {
 
 function updateSyncStatus() {
   if (currentChannel === "food") {
-    elements.syncStatus.textContent = foodLoading ? "正在读取地点..." : cloudFoodItems.length ? "云端地点已连接" : "地点库暂时不可用";
+    elements.syncStatus.textContent = foodLoading ? "正在读取地点..." : cloudFoodItems.length ? "按评价数排序 · 云端地点" : "地点库暂时不可用";
     return;
   }
   const count = cloudCatalogItems[currentChannel]?.length || 0;
-  elements.syncStatus.textContent = catalogLoading ? "正在读取商品..." : count ? `云端商品库 · ${count} 件` : "该频道等待首批导入";
+  elements.syncStatus.textContent = catalogLoading ? "正在读取商品..." : count ? `按评价数排序 · ${count} 件` : "该频道等待首批导入";
 }
 
 function renderFilters() {
@@ -758,18 +769,17 @@ function renderFilters() {
 }
 
 function currentItems() {
-  const imported = cloudCatalogItems[currentChannel] || [];
-  const source = currentChannel === "food" ? cloudFoodItems : imported;
   const query = elements.search.value.trim().toLowerCase();
+  const searchingAll = Boolean(query);
+  const imported = cloudCatalogItems[currentChannel] || [];
+  const source = searchingAll ? allCatalogItems() : currentChannel === "food" ? cloudFoodItems : imported;
   const reviewed = applyLocalReviewStats(source);
   let items = reviewed.filter((item) => {
     if (favoritesOnly && !favoriteIds.has(item.id)) return false;
-    if (activeFilter !== "全部" && item.category !== activeFilter) return false;
+    if (!searchingAll && activeFilter !== "全部" && item.category !== activeFilter) return false;
     return [item.title, item.category, item.note, item.searchText || ""].join(" ").toLowerCase().includes(query);
   });
-  const sort = elements.sort.value;
-  if (sort === "rating") items.sort((a, b) => b.rating - a.rating);
-  if (sort === "reviewed") items.sort((a, b) => b.reviewCount - a.reviewCount);
+  items.sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating || (a.featuredOrder || 0) - (b.featuredOrder || 0));
   return items;
 }
 
@@ -794,7 +804,23 @@ function applyLocalReviewStats(items) {
 }
 
 function render() {
-  const loading = currentChannel === "food" ? foodLoading : catalogLoading;
+  const query = elements.search.value.trim();
+  const searchingAll = Boolean(query);
+  const loading = searchingAll ? foodLoading || catalogLoading : currentChannel === "food" ? foodLoading : catalogLoading;
+  if (searchingAll) {
+    elements.eyebrow.textContent = "全站搜索 · SEARCH";
+    elements.title.textContent = `“${query}”`;
+    elements.description.textContent = "同时搜索美食、美妆、生活与潮流的全部品目。";
+    elements.syncStatus.textContent = "四个频道 · 按评价数排序";
+  } else {
+    const config = channelCatalog[currentChannel];
+    elements.eyebrow.textContent = config.eyebrow;
+    elements.title.textContent = config.title;
+    elements.description.textContent = config.description;
+    updateSyncStatus();
+  }
+  elements.toolbar.hidden = searchingAll;
+  elements.foodViewSwitch.hidden = searchingAll || currentChannel !== "food";
   elements.catalogSection.setAttribute("aria-busy", String(loading));
   elements.loading.hidden = !loading;
   if (loading) {
@@ -812,14 +838,14 @@ function render() {
   elements.grid.hidden = false;
   elements.empty.hidden = items.length > 0;
   if (!items.length) {
-    const hasQuery = Boolean(elements.search.value.trim()) || activeFilter !== "全部" || favoritesOnly;
+    const hasQuery = searchingAll || activeFilter !== "全部" || favoritesOnly;
     elements.emptyActions.hidden = hasQuery || currentChannel === "food" || currentChannel === "beauty";
     if (favoritesOnly) {
       elements.emptyTitle.textContent = "还没有收藏";
       elements.emptyDescription.textContent = "在品目卡片上点收藏，之后可以从这里快速找回。";
     } else if (hasQuery) {
-      elements.emptyTitle.textContent = "没有符合条件的品目";
-      elements.emptyDescription.textContent = "换个关键词或筛选条件再试一次。";
+      elements.emptyTitle.textContent = searchingAll ? `没有找到“${query}”` : "没有符合条件的品目";
+      elements.emptyDescription.textContent = searchingAll ? "试试商品中文名、韩文名、品牌或餐厅名称。" : "换个筛选条件再试一次。";
     } else {
       elements.emptyTitle.textContent = currentChannel === "life" ? "生活品目正在整理" : currentChannel === "fashion" ? "潮流品目正在整理" : "这个频道暂时没有品目";
       elements.emptyDescription.textContent = currentChannel === "life"
@@ -836,7 +862,7 @@ function render() {
     const visual = card.querySelector(".card-visual");
     const image = card.querySelector(".card-image");
     card.querySelector(".card-index").textContent = String(index + 1).padStart(2, "0");
-    card.querySelector(".card-glyph").textContent = item.glyph || channelCatalog[currentChannel].glyph;
+    card.querySelector(".card-glyph").textContent = item.glyph || channelCatalog[item.channel || currentChannel].glyph;
     if (item.imageUrl) {
       visual.classList.add("has-image");
       image.src = item.imageUrl;
@@ -850,7 +876,9 @@ function render() {
     card.dataset.kind = item.kind;
     const openButton = card.querySelector(".card-open");
     openButton.setAttribute("aria-label", `查看 ${item.title} 详情`);
-    card.querySelector(".card-category").textContent = item.kind === "product" ? item.brand : item.category;
+    const itemLabel = item.kind === "product" ? item.brand : item.category;
+    const channelLabel = channelCatalog[item.channel || currentChannel].eyebrow.split(" · ")[0];
+    card.querySelector(".card-category").textContent = searchingAll ? `${channelLabel} · ${itemLabel}` : itemLabel;
     card.querySelector(".card-title").textContent = item.title;
     card.querySelector(".card-note").textContent = item.price ? `₩${item.price.toLocaleString("ko-KR")}` : item.note;
     card.querySelector(".card-rating").textContent = item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评";
@@ -869,9 +897,8 @@ function render() {
     });
     openButton.addEventListener("click", () => openDetailModal(item));
     elements.grid.append(card);
-    if (index === 7 && currentChannel !== "food") elements.grid.append(createFeedAd());
   });
-  const hasMore = currentChannel !== "food" && visibleItems.length < items.length;
+  const hasMore = (searchingAll || currentChannel !== "food") && visibleItems.length < items.length;
   elements.more.hidden = !hasMore;
   elements.loadMore.textContent = hasMore ? `继续加载 · ${visibleItems.length} / ${items.length}` : "继续加载";
   refreshSuggestions();
@@ -953,7 +980,7 @@ function renderMapFallback() {
   list.className = "map-fallback-list";
   list.setAttribute("aria-label", "可浏览的美食地点");
   [...cloudFoodItems]
-    .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount)
+    .sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating)
     .slice(0, 12)
     .forEach((item) => {
       const button = document.createElement("button");
@@ -1339,17 +1366,6 @@ async function syncFavoriteToCloud(item, active) {
     showToast("收藏同步失败，已恢复原状态。 ");
     console.warn("[favorites] cloud sync failed", error);
   }
-}
-
-function createFeedAd() {
-  const ad = document.createElement("aside");
-  ad.className = "catalog-ad ad-slot";
-  ad.dataset.adPlacement = `${currentChannel}-feed`;
-  ad.innerHTML = `
-    <span class="ad-label">品牌合作</span>
-    <div><strong>新品和品牌故事</strong><p>合作内容与普通选品分开，并始终明确标注。</p></div>
-    <small>合作位暂未开放</small>`;
-  return ad;
 }
 
 function openDetailModal(item) {

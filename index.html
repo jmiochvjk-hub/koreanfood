@@ -7,7 +7,7 @@
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
   <title>伴饭 · 来韩国照着选</title>
   <link rel="stylesheet" href="./tokens.css?v=20260927h" />
-  <link rel="stylesheet" href="./redesign.css?v=20260927n" />
+  <link rel="stylesheet" href="./redesign.css?v=20260927o" />
 </head>
 <body data-channel="food">
   <header class="site-header">
@@ -18,7 +18,7 @@
       </a>
       <label class="global-search" for="searchInput">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
-        <input id="searchInput" type="search" aria-label="搜索商品、品牌或店铺" placeholder="搜索商品、品牌或店铺" autocomplete="off" />
+        <input id="searchInput" type="search" aria-label="全站搜索商品、品牌或餐厅" placeholder="全站搜索商品、品牌或餐厅" autocomplete="off" />
       </label>
       <div class="header-actions">
         <button id="openFavoritesButton" class="text-button" type="button" aria-pressed="false">收藏</button>
@@ -70,12 +70,6 @@
       </div>
     </section>
 
-    <aside class="partner-strip ad-slot" data-ad-placement="home-hero">
-      <span class="ad-label">品牌合作</span>
-      <p>韩国品牌、新品与城市专题的合作内容会出现在这里，并始终明确标注。</p>
-      <small>合作位暂未开放</small>
-    </aside>
-
     <section class="catalog-section">
       <header class="catalog-header">
         <div>
@@ -89,16 +83,13 @@
         </div>
       </header>
 
-      <div class="catalog-toolbar">
+      <div class="catalog-toolbar" id="catalogToolbar">
         <div class="filter-chips" id="filterChips" aria-label="品目筛选"></div>
         <div class="toolbar-right">
           <div class="view-switch" id="foodViewSwitch" aria-label="美食查看方式">
             <button class="is-active" type="button" data-view="list" aria-pressed="true">榜单</button>
             <button type="button" data-view="map" aria-pressed="false">地图</button>
           </div>
-          <select id="sortSelect" aria-label="排序方式">
-            <option value="featured">综合</option><option value="rating">评分</option><option value="reviewed">评价数</option>
-          </select>
         </div>
       </div>
 
@@ -257,10 +248,6 @@
         <header><h3>真实带图评价</h3><span id="detailReviewSummary"></span></header>
         <div id="detailReviewList" class="detail-review-list"></div>
       </section>
-      <aside class="detail-ad ad-slot" data-ad-placement="product-detail">
-        <span class="ad-label">BRAND PARTNERSHIP · 品牌合作</span>
-        <p>同类商品、品牌故事或门店活动将出现在这里。</p>
-      </aside>
     </article>
   </div>
 
@@ -289,6 +276,6 @@
   </template>
 
   <script src="./config.js?v=20260927l"></script>
-  <script src="./app.js?v=20260927o"></script>
+  <script src="./app.js?v=20260927p"></script>
 </body>
 </html>

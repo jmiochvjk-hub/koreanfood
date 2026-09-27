@@ -312,38 +312,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   white-space: nowrap;
 }
 
-.partner-strip {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-xl);
-  min-height: 4.75rem;
-  border-bottom: var(--rule-hair) solid var(--color-rule);
-  padding: var(--space-sm) var(--space-md);
-  background: color-mix(in oklch, var(--color-surface-muted) 78%, var(--color-paper));
-}
-
-.ad-label {
-  color: var(--color-accent-dark);
-  font-size: 0.7rem;
-  font-weight: 750;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
-
-.partner-strip p {
-  margin: 0;
-  color: var(--color-ink-muted);
-  font-size: 0.78rem;
-  line-height: 1.55;
-}
-
-.partner-strip small {
-  color: var(--color-ink-muted);
-  font-size: 0.7rem;
-  white-space: nowrap;
-}
-
 .category-launcher {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -507,17 +475,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 .toolbar-right,
 .view-switch { display: flex; align-items: center; gap: var(--space-2xs); }
 
-#sortSelect {
-  min-height: 2.75rem;
-  border: 0;
-  border-bottom: var(--rule-hair) solid var(--color-rule-strong);
-  border-radius: 0;
-  padding: 0 1.75rem 0 var(--space-xs);
-  color: var(--color-ink);
-  background-color: transparent;
-  font-size: 0.76rem;
-}
-
 .catalog-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -644,21 +601,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   outline: 2px solid var(--color-focus);
   outline-offset: 3px;
 }
-
-.catalog-ad {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  aspect-ratio: 1;
-  padding: var(--space-lg);
-  color: var(--color-on-accent);
-  background: var(--color-ink);
-}
-
-.catalog-ad .ad-label { color: color-mix(in oklch, var(--color-on-accent) 72%, transparent); }
-.catalog-ad strong { display: block; max-width: 12ch; font-size: clamp(1.45rem, 2.6vw, 2.5rem); font-weight: 520; line-height: 1.06; letter-spacing: -0.035em; }
-.catalog-ad p { max-width: 28ch; color: color-mix(in oklch, var(--color-on-accent) 66%, transparent); font-size: 0.74rem; line-height: 1.6; }
-.catalog-ad small { color: color-mix(in oklch, var(--color-on-accent) 48%, transparent); font-size: 0.68rem; }
 
 .catalog-more { display: grid; place-items: center; padding-top: var(--space-xl); }
 .catalog-more button { min-width: 13rem; min-height: 3rem; border: var(--rule-hair) solid var(--color-ink); border-radius: var(--radius-control); background: transparent; font-size: 0.78rem; font-weight: 700; }
@@ -909,9 +851,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 .detail-review-card p { font-size: 0.78rem; line-height: 1.65; }
 .review-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xs); margin: var(--space-sm) 0; }
 .review-photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--color-surface); }
-.detail-ad { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xl); padding: var(--space-lg) clamp(1.5rem, 5vw, 4rem); border-top: var(--rule-hair) solid var(--color-rule); background: var(--color-surface-muted); }
-.detail-ad p { margin: 0; color: var(--color-ink-muted); font-size: 0.74rem; }
-
 .site-footer {
   width: min(var(--page-max), 100%);
   margin: 0 auto;
@@ -1010,16 +949,13 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   .lookbook-tile:not(.lookbook-main) .lookbook-media { aspect-ratio: 1; }
   .lookbook-caption { padding: var(--space-xs); }
 
-  .partner-strip { grid-template-columns: 1fr auto; gap: var(--space-xs); padding: var(--space-sm); }
-  .partner-strip p { grid-column: 1 / -1; grid-row: 2; }
-
   .category-launcher { position: sticky; z-index: 900; top: 7.25rem; margin-right: calc(var(--space-sm) * -1); margin-left: calc(var(--space-sm) * -1); background: color-mix(in oklch, var(--color-paper) 96%, transparent); backdrop-filter: blur(12px); }
   .category-entry { align-items: center; justify-content: center; min-height: 3.75rem; padding: var(--space-xs) var(--space-2xs); text-align: center; }
   .entry-copy strong { font-size: 0.92rem; }
   .entry-copy small { display: none; }
   .entry-en { display: none; }
 
-  .catalog-section { margin-top: var(--space-2xl); }
+  .catalog-section { margin-top: var(--space-2xl); scroll-margin-top: 11.5rem; }
   .catalog-header { grid-template-columns: minmax(0, 1fr); }
   .catalog-header h2 { font-size: clamp(2rem, 11vw, 3.2rem); }
   .catalog-meta { display: none; }
@@ -1030,8 +966,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
     mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent);
   }
   .toolbar-right { flex-direction: column; align-items: flex-end; }
-  #sortSelect { width: 5.75rem; }
-
   .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xl) var(--space-xs); }
   .catalog-loading > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); }
   .card-title { font-size: 0.78rem; }
@@ -1039,9 +973,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   .card-meta { font-size: 0.64rem; }
   .card-note { font-size: 0.74rem; }
   .card-favorite { top: var(--space-2xs); right: var(--space-2xs); width: 2.75rem; height: 2.75rem; }
-  .catalog-ad { padding: var(--space-sm); }
-  .catalog-ad strong { font-size: 1.3rem; }
-
   .food-map-panel { height: 66vh; min-height: 30rem; margin-right: calc(var(--space-sm) * -1); margin-left: calc(var(--space-sm) * -1); }
   .map-fallback { padding: 6rem var(--space-xs) var(--space-xs); }
   .map-fallback-list { grid-template-columns: minmax(0, 1fr); }
@@ -1088,7 +1019,6 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   .detail-media { max-height: 50dvh; }
   .detail-reviews { padding: var(--space-xl) var(--space-md); }
   .detail-review-list { grid-template-columns: minmax(0, 1fr); }
-  .detail-ad { align-items: flex-start; flex-direction: column; gap: var(--space-xs); padding: var(--space-lg) var(--space-md); }
   .toast { right: var(--space-sm); bottom: 4.75rem; left: var(--space-sm); max-width: none; }
 
   .footer-brand { align-items: flex-start; flex-direction: column; }

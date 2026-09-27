@@ -33,9 +33,9 @@ BanFan is not a purchasing or daigou platform and not a generic social feed. It 
 - Food supports both a list and a map, including adding a new place.
 - Non-food items are imported by the platform. Current evidence includes an Olive Young seed catalogue.
 - Reviews require at least one real photo; user photos belong in reviews rather than replacing the official catalogue image.
-- Users can search, filter, sort, save, open details, and submit reviews.
+- Users can search, filter, save, open details, and submit reviews.
+- Global search crosses all four channels, and discovery lists default to popularity measured by review count.
 - Barcode scanning is intentionally out of scope for the current product.
-- Advertising inventory must be reserved, clearly labelled, and useful in context.
 - The current implementation is a static HTML/CSS/JavaScript web app backed by Supabase and deployed with GitHub Pages.
 - China-accessible mapping and Mini Program support remain open technical decisions; the current Korean web map may not work reliably in mainland China.
 - Registration and WeChat login remain open product and implementation decisions.
