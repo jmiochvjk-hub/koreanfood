@@ -103,6 +103,11 @@ const elements = {
   authEmail: document.querySelector("#authEmail"),
   sendAuthLink: document.querySelector("#sendAuthLinkButton"),
   authSent: document.querySelector("#authSent"),
+  authSentEmail: document.querySelector("#authSentEmail"),
+  authOtpForm: document.querySelector("#authOtpForm"),
+  authOtp: document.querySelector("#authOtp"),
+  verifyAuthOtp: document.querySelector("#verifyAuthOtpButton"),
+  resendAuthOtp: document.querySelector("#resendAuthOtpButton"),
   changeAuthEmail: document.querySelector("#changeAuthEmailButton"),
   authAccount: document.querySelector("#authAccount"),
   authAccountEmail: document.querySelector("#authAccountEmail"),
@@ -140,6 +145,10 @@ const elements = {
 
 let currentChannel = "food";
 let authSession = loadAuthSession();
+let pendingAuthEmail = "";
+let authResendRemaining = 0;
+let authResendTimer = null;
+let authSending = false;
 let activeFilter = "全部";
 let cloudFoodItems = [];
 let cloudCatalogItems = { beauty: [], life: [], fashion: [] };
@@ -199,8 +208,15 @@ elements.favorites.addEventListener("click", () => {
 elements.account.addEventListener("click", openAuthModal);
 elements.authBackdrop.addEventListener("click", closeAuthModal);
 elements.closeAuth.addEventListener("click", closeAuthModal);
-elements.authForm.addEventListener("submit", sendMagicLink);
+elements.authForm.addEventListener("submit", sendEmailOtp);
+elements.authOtpForm.addEventListener("submit", verifyEmailOtp);
+elements.resendAuthOtp.addEventListener("click", resendEmailOtp);
 elements.changeAuthEmail.addEventListener("click", showAuthForm);
+elements.authOtp.addEventListener("input", () => {
+  elements.authOtp.value = elements.authOtp.value.replace(/\D/g, "").slice(0, 8);
+  elements.authOtp.removeAttribute("aria-invalid");
+  hideAuthStatus();
+});
 elements.signOut.addEventListener("click", signOut);
 elements.openReview.addEventListener("click", () => openReviewModal());
 elements.mobileReview.addEventListener("click", () => openReviewModal());
@@ -340,8 +356,9 @@ function updateAccountUI() {
 function openAuthModal() {
   hideAuthStatus();
   if (authSession) showAuthAccount();
+  else if (pendingAuthEmail) showAuthOtp();
   else showAuthForm();
-  const focusTarget = authSession ? elements.signOut : elements.authEmail;
+  const focusTarget = authSession ? elements.signOut : pendingAuthEmail ? elements.authOtp : elements.authEmail;
   activateModal(elements.authModal, focusTarget);
 }
 
@@ -351,17 +368,32 @@ function closeAuthModal() {
 }
 
 function showAuthForm() {
+  stopAuthResendTimer(true);
+  pendingAuthEmail = "";
   elements.authForm.hidden = false;
   elements.authSent.hidden = true;
   elements.authAccount.hidden = true;
   elements.authEmail.disabled = false;
   elements.sendAuthLink.disabled = false;
-  elements.sendAuthLink.textContent = "发送登录邮件";
+  elements.sendAuthLink.textContent = "获取验证码";
   hideAuthStatus();
   if (!elements.authModal.hidden) elements.authEmail.focus();
 }
 
+function showAuthOtp() {
+  elements.authForm.hidden = true;
+  elements.authSent.hidden = false;
+  elements.authAccount.hidden = true;
+  elements.authSentEmail.textContent = maskEmail(pendingAuthEmail);
+  elements.authOtp.disabled = false;
+  elements.verifyAuthOtp.disabled = false;
+  elements.verifyAuthOtp.textContent = "验证并登录";
+  if (!elements.authModal.hidden) elements.authOtp.focus();
+}
+
 function showAuthAccount() {
+  stopAuthResendTimer(true);
+  pendingAuthEmail = "";
   const email = authSession?.user?.email || parseJwt(authSession?.access_token || "").email || "已登录用户";
   elements.authForm.hidden = true;
   elements.authSent.hidden = true;
@@ -369,15 +401,25 @@ function showAuthAccount() {
   elements.authAccountEmail.textContent = email;
 }
 
-async function sendMagicLink(event) {
+async function sendEmailOtp(event) {
   event.preventDefault();
   const email = elements.authEmail.value.trim().toLowerCase();
+  await requestEmailOtp(email, false);
+}
+
+async function requestEmailOtp(email, isResend) {
   const config = window.SUPABASE_CONFIG || {};
-  if (!email) return;
+  if (!email || authSending) return;
   if (!config.url || !config.anonKey) return showAuthStatus("登录服务尚未连接，请稍后再试。");
-  elements.authEmail.disabled = true;
-  elements.sendAuthLink.disabled = true;
-  elements.sendAuthLink.textContent = "正在发送…";
+  authSending = true;
+  if (isResend) {
+    elements.resendAuthOtp.disabled = true;
+    elements.resendAuthOtp.textContent = "正在重新发送…";
+  } else {
+    elements.authEmail.disabled = true;
+    elements.sendAuthLink.disabled = true;
+    elements.sendAuthLink.textContent = "正在发送…";
+  }
   hideAuthStatus();
   const redirectTo = `${window.location.origin}${window.location.pathname}`;
   try {
@@ -390,16 +432,115 @@ async function sendMagicLink(event) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.msg || error.message || `HTTP ${response.status}`);
     }
-    elements.authForm.hidden = true;
-    elements.authSent.hidden = false;
-    showAuthStatus(`登录链接已发送到 ${email}。`);
+    pendingAuthEmail = email;
+    elements.authOtp.value = "";
+    elements.authOtp.removeAttribute("aria-invalid");
+    showAuthOtp();
+    startAuthResendTimer();
+    hideAuthStatus();
+    elements.authOtp.focus();
+    if (isResend) showToast("新的验证码已发送，请查看邮箱。");
   } catch (error) {
-    elements.authEmail.disabled = false;
-    elements.sendAuthLink.disabled = false;
-    elements.sendAuthLink.textContent = "重新发送";
-    showAuthStatus(error.message.includes("rate") ? "发送太频繁，请一分钟后再试。" : "邮件发送失败，请检查地址或稍后重试。");
-    console.error("[auth] magic link failed", error);
+    const message = String(error.message || "").toLowerCase();
+    if (isResend) stopAuthResendTimer(true);
+    else {
+      elements.authEmail.disabled = false;
+      elements.sendAuthLink.disabled = false;
+      elements.sendAuthLink.textContent = "重新获取验证码";
+    }
+    showAuthStatus(message.includes("rate") ? "发送太频繁，请一分钟后再试。" : "验证码发送失败，请检查邮箱地址或稍后重试。");
+    console.error("[auth] email OTP request failed", error);
+  } finally {
+    authSending = false;
   }
+}
+
+async function verifyEmailOtp(event) {
+  event.preventDefault();
+  const token = elements.authOtp.value.replace(/\D/g, "");
+  const config = window.SUPABASE_CONFIG || {};
+  if (!pendingAuthEmail) return showAuthStatus("请先填写邮箱并获取验证码。");
+  if (token.length < 6 || token.length > 8) return showAuthStatus("请输入邮件中的 6–8 位数字验证码。");
+
+  elements.authOtp.value = token;
+  elements.authOtp.disabled = true;
+  elements.verifyAuthOtp.disabled = true;
+  elements.verifyAuthOtp.textContent = "正在验证…";
+  hideAuthStatus();
+
+  try {
+    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/verify`, {
+      method: "POST",
+      headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: pendingAuthEmail, token, type: "email" }),
+    });
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok || !value.access_token || !value.refresh_token) {
+      throw new Error(value.msg || value.message || `HTTP ${response.status}`);
+    }
+    authSession = {
+      access_token: value.access_token,
+      refresh_token: value.refresh_token,
+      expires_at: Math.floor(Date.now() / 1000) + Number(value.expires_in || 3600),
+      user: value.user || { email: pendingAuthEmail },
+    };
+    persistAuthSession();
+    stopAuthResendTimer(true);
+    pendingAuthEmail = "";
+    updateAccountUI();
+    closeAuthModal();
+    showToast("登录成功，可以发布真实体验了。");
+  } catch (error) {
+    elements.authOtp.disabled = false;
+    elements.verifyAuthOtp.disabled = false;
+    elements.verifyAuthOtp.textContent = "重新验证";
+    elements.authOtp.setAttribute("aria-invalid", "true");
+    const message = String(error.message || "").toLowerCase();
+    if (message.includes("expired")) showAuthStatus("验证码已过期，请重新发送。");
+    else if (message.includes("invalid") || message.includes("token")) showAuthStatus("验证码不正确，请检查后重试。");
+    else if (message.includes("rate")) showAuthStatus("尝试次数过多，请稍后再试。");
+    else showAuthStatus("暂时无法验证，请稍后重试。");
+    elements.authOtp.select();
+    console.error("[auth] OTP verification failed", error);
+  }
+}
+
+async function resendEmailOtp() {
+  if (!pendingAuthEmail || authResendRemaining > 0) return;
+  await requestEmailOtp(pendingAuthEmail, true);
+}
+
+function startAuthResendTimer() {
+  stopAuthResendTimer();
+  authResendRemaining = 60;
+  updateAuthResendButton();
+  authResendTimer = window.setInterval(() => {
+    authResendRemaining -= 1;
+    updateAuthResendButton();
+    if (authResendRemaining <= 0) stopAuthResendTimer();
+  }, 1000);
+}
+
+function stopAuthResendTimer(reset = false) {
+  if (authResendTimer) window.clearInterval(authResendTimer);
+  authResendTimer = null;
+  if (reset || authResendRemaining <= 0) {
+    authResendRemaining = 0;
+    updateAuthResendButton();
+  }
+}
+
+function updateAuthResendButton() {
+  const waiting = authResendRemaining > 0;
+  elements.resendAuthOtp.disabled = waiting;
+  elements.resendAuthOtp.textContent = waiting ? `${authResendRemaining} 秒后重新发送` : "重新发送验证码";
+}
+
+function maskEmail(email) {
+  const [name = "", domain = ""] = email.split("@");
+  if (!domain) return email;
+  const visible = name.slice(0, Math.min(2, name.length));
+  return `${visible}${"•".repeat(Math.max(2, Math.min(5, name.length - visible.length)))}@${domain}`;
 }
 
 async function signOut() {
