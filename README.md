@@ -22,7 +22,7 @@
 - `index.html`：品目发现、FOOD 地图与评价界面。
 - `styles.css`：响应式界面。
 - `app.js`：云端商品/地点读取、搜索筛选、分页、收藏、评价原型、FOOD 地图和地点新增。
-- `config.js`：浏览器可用的 Supabase anon 配置与 Kakao JS key。
+- `config.js`：浏览器可用的 Supabase anon 配置、腾讯地图 JS key，以及迁移期间可选的 Kakao 后备 key。
 - `migrations/`：分阶段 Supabase 数据结构与 RLS 迁移。
 - `supabase-schema.sql`：仅用于旧版 `food_places` 的初始安装，不再代表完整模型。
 
@@ -40,6 +40,12 @@ python3 -m http.server 4173
 ```
 
 打开 `http://127.0.0.1:4173/`。
+
+## 地图配置
+
+网页优先加载腾讯地图 JavaScript API GL，便于中国大陆访问和后续微信小程序复用地点数据。在腾讯位置服务控制台创建 Web 端 key 后，将它填入 `config.js` 的 `window.TENCENT_MAP_KEY`。
+
+腾讯 key 尚未配置或加载失败时，网页会临时回退到 Kakao。餐厅的经纬度保存在 Supabase 中，不绑定任何地图供应商。
 
 ## 安全
 

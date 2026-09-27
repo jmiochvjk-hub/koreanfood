@@ -138,8 +138,10 @@ let detailItem = null;
 let lastFocusedElement = null;
 let foodView = "list";
 let map = null;
+let mapProvider = null;
+let mapSdk = null;
 let kakaoSdk = null;
-let mapLoadPromise = null;
+let mapProviderLoadPromise = null;
 let mapOverlays = [];
 let activeMapPopup = null;
 let addingPlace = false;
@@ -512,37 +514,60 @@ function syncFoodViewVisibility() {
 
 async function loadFoodMap() {
   if (map) {
-    setTimeout(() => map.relayout(), 0);
+    setTimeout(() => {
+      if (mapProvider === "kakao") map.relayout();
+      else if (typeof map.resize === "function") map.resize();
+    }, 0);
     drawFoodMarkers();
     return;
   }
   elements.mapStatus.textContent = "正在加载韩国地图...";
   try {
-    kakaoSdk = await ensureKakaoSdk();
-    if (!kakaoSdk) throw new Error("Kakao Maps 未加载");
-    map = new kakaoSdk.maps.Map(document.querySelector("#map"), {
-      center: new kakaoSdk.maps.LatLng(37.5665, 126.978),
-      level: 8,
-    });
-    const zoomControl = new kakaoSdk.maps.ZoomControl();
-    map.addControl(zoomControl, kakaoSdk.maps.ControlPosition.RIGHT);
-    kakaoSdk.maps.event.addListener(map, "click", (event) => {
-      if (!addingPlace) return;
-      selectPlaceCoordinates(event.latLng.getLat(), event.latLng.getLng());
-    });
-    elements.mapStatus.textContent = "当前使用韩国地图 · 国内网络失败时仍可使用榜单";
+    const provider = await ensureMapProvider();
+    if (!provider) throw new Error("地图服务未加载");
+    mapProvider = provider.name;
+    mapSdk = provider.sdk;
+    if (mapProvider === "tencent") initializeTencentMap();
+    else initializeKakaoMap();
+    elements.mapStatus.textContent = mapProvider === "tencent"
+      ? "腾讯地图 · 面向中国访问"
+      : "韩国地图临时后备 · 腾讯地图配置中";
     drawFoodMarkers();
   } catch (error) {
     elements.mapStatus.textContent = "当前网络无法加载地图，请先使用榜单";
-    document.querySelector("#map").innerHTML = '<div class="catalog-empty"><strong>地图暂时不可用</strong><span>地点数据没有丢失。中国网页与小程序版将接入独立地图服务。</span></div>';
+    document.querySelector("#map").innerHTML = '<div class="catalog-empty"><strong>地图暂时不可用</strong><span>地点数据没有丢失，仍可使用榜单浏览。</span></div>';
     console.error("[map] load failed", error);
   }
 }
 
+async function ensureMapProvider() {
+  if (mapProviderLoadPromise) return mapProviderLoadPromise;
+  mapProviderLoadPromise = (async () => {
+    const tencent = await ensureTencentSdk();
+    if (tencent) return { name: "tencent", sdk: tencent };
+    const kakao = await ensureKakaoSdk();
+    if (kakao) return { name: "kakao", sdk: kakao };
+    return null;
+  })();
+  return mapProviderLoadPromise;
+}
+
+function ensureTencentSdk() {
+  if (!window.TENCENT_MAP_KEY) return Promise.resolve(null);
+  if (window.TMap) return Promise.resolve(window.TMap);
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(window.TENCENT_MAP_KEY)}`;
+    script.onload = () => resolve(window.TMap || null);
+    script.onerror = () => resolve(null);
+    document.head.append(script);
+  });
+}
+
 function ensureKakaoSdk() {
-  if (mapLoadPromise) return mapLoadPromise;
   if (!window.KAKAO_JS_KEY) return Promise.resolve(null);
-  mapLoadPromise = new Promise((resolve) => {
+  if (window.kakao?.maps) return new Promise((resolve) => window.kakao.maps.load(() => resolve(window.kakao)));
+  return new Promise((resolve) => {
     const script = document.createElement("script");
     script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(window.KAKAO_JS_KEY)}&libraries=services&autoload=false`;
     script.onload = () => {
@@ -552,14 +577,45 @@ function ensureKakaoSdk() {
     script.onerror = () => resolve(null);
     document.head.append(script);
   });
-  return mapLoadPromise;
+}
+
+function initializeTencentMap() {
+  map = new mapSdk.Map(document.querySelector("#map"), {
+    center: new mapSdk.LatLng(37.5665, 126.978),
+    zoom: 11,
+  });
+  map.on("click", (event) => {
+    if (!addingPlace || !event.latLng) return;
+    selectPlaceCoordinates(event.latLng.getLat(), event.latLng.getLng());
+  });
+}
+
+function initializeKakaoMap() {
+  kakaoSdk = mapSdk;
+  map = new kakaoSdk.maps.Map(document.querySelector("#map"), {
+    center: new kakaoSdk.maps.LatLng(37.5665, 126.978),
+    level: 8,
+  });
+  const zoomControl = new kakaoSdk.maps.ZoomControl();
+  map.addControl(zoomControl, kakaoSdk.maps.ControlPosition.RIGHT);
+  kakaoSdk.maps.event.addListener(map, "click", (event) => {
+    if (!addingPlace) return;
+    selectPlaceCoordinates(event.latLng.getLat(), event.latLng.getLng());
+  });
 }
 
 function drawFoodMarkers() {
-  if (!map || !kakaoSdk) return;
+  if (!map || !mapSdk) return;
   mapOverlays.forEach((overlay) => overlay.setMap(null));
   mapOverlays = [];
-  cloudFoodItems.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)).forEach((item) => {
+  if (activeMapPopup) activeMapPopup.setMap(null);
+  activeMapPopup = null;
+  const items = cloudFoodItems.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+  if (mapProvider === "tencent") {
+    drawTencentMarkers(items);
+    return;
+  }
+  items.forEach((item) => {
     const pin = document.createElement("button");
     pin.type = "button";
     pin.className = "banfan-pin";
@@ -580,9 +636,56 @@ function drawFoodMarkers() {
   });
 }
 
+function drawTencentMarkers(items) {
+  if (!items.length) return;
+  const marker = new mapSdk.MultiMarker({
+    id: "banfan-food-places",
+    map,
+    styles: {
+      banfan: new mapSdk.MarkerStyle({
+        width: 34,
+        height: 42,
+        anchor: { x: 17, y: 42 },
+        src: createTencentPinImage(),
+        color: "#ffffff",
+        size: 13,
+        direction: "center",
+      }),
+    },
+    geometries: items.map((item) => ({
+      id: String(item.id),
+      styleId: "banfan",
+      position: new mapSdk.LatLng(item.lat, item.lng),
+      content: item.category.slice(0, 1),
+    })),
+  });
+  marker.setStopPropagation(true);
+  marker.on("click", (event) => {
+    const item = items.find((candidate) => String(candidate.id) === String(event.geometry?.id));
+    if (item) openMapPopup(item);
+  });
+  mapOverlays.push(marker);
+}
+
+function createTencentPinImage() {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42"><path fill="#171717" d="M17 0C7.61 0 0 7.61 0 17c0 12.75 17 25 17 25s17-12.25 17-25C34 7.61 26.39 0 17 0Z"/><circle cx="17" cy="17" r="11" fill="#171717" stroke="#fff" stroke-width="1.5"/></svg>';
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 function openMapPopup(item) {
-  if (!map || !kakaoSdk) return;
+  if (!map || !mapSdk) return;
   if (activeMapPopup) activeMapPopup.setMap(null);
+  if (mapProvider === "tencent") {
+    activeMapPopup = new mapSdk.InfoWindow({
+      map,
+      position: new mapSdk.LatLng(item.lat, item.lng),
+      content: `<div class="map-popup"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评"}</span></div>`,
+      enableCustom: true,
+      offset: { x: 0, y: -48 },
+      zIndex: 900,
+    });
+    return;
+  }
   const popup = document.createElement("div");
   popup.className = "map-popup";
   popup.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评"}</span>`;
@@ -621,15 +724,39 @@ function selectPlaceCoordinates(lat, lng) {
   selectedCoordinates = { lat, lng };
   elements.coordinateText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   if (draftOverlay) draftOverlay.setMap(null);
-  const pin = document.createElement("div");
-  pin.className = "banfan-pin";
-  pin.innerHTML = "<span>＋</span>";
-  draftOverlay = new kakaoSdk.maps.CustomOverlay({
-    position: new kakaoSdk.maps.LatLng(lat, lng),
-    content: pin,
-    xAnchor: .5,
-    yAnchor: 1,
-  });
+  if (mapProvider === "tencent") {
+    draftOverlay = new mapSdk.MultiMarker({
+      id: "banfan-draft-place",
+      map,
+      styles: {
+        draft: new mapSdk.MarkerStyle({
+          width: 34,
+          height: 42,
+          anchor: { x: 17, y: 42 },
+          src: createTencentPinImage(),
+          color: "#ffffff",
+          size: 17,
+          direction: "center",
+        }),
+      },
+      geometries: [{
+        id: "draft",
+        styleId: "draft",
+        position: new mapSdk.LatLng(lat, lng),
+        content: "+",
+      }],
+    });
+  } else {
+    const pin = document.createElement("div");
+    pin.className = "banfan-pin";
+    pin.innerHTML = "<span>＋</span>";
+    draftOverlay = new kakaoSdk.maps.CustomOverlay({
+      position: new kakaoSdk.maps.LatLng(lat, lng),
+      content: pin,
+      xAnchor: .5,
+      yAnchor: 1,
+    });
+  }
   draftOverlay.setMap(map);
   elements.placeName.focus();
 }
