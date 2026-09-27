@@ -2,3 +2,9 @@ project_id = "korean-food-map"
 
 [functions.moderate-review]
 verify_jwt = true
+
+[functions.moderate-community-post]
+verify_jwt = true
+
+[functions.ask-banfan]
+verify_jwt = false

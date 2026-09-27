@@ -206,7 +206,13 @@ elements.authOtp.addEventListener("input", () => {
 });
 elements.signOut.addEventListener("click", signOut);
 elements.openReview.addEventListener("click", () => openReviewModal());
-elements.mobileReview.addEventListener("click", () => openReviewModal());
+elements.mobileReview.addEventListener("click", () => {
+  if (window.BANFAN_ACTIVE_VIEW === "community" && typeof window.openCommunityComposer === "function") {
+    window.openCommunityComposer();
+    return;
+  }
+  openReviewModal();
+});
 elements.closeReview.addEventListener("click", closeReviewModal);
 elements.backdrop.addEventListener("click", closeReviewModal);
 elements.closeDetail.addEventListener("click", closeDetailModal);

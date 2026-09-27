@@ -14,11 +14,11 @@ web
 
 ## Product Purpose
 
-BanFan helps Chinese-speaking users discover Korean food, beauty, lifestyle, and fashion items through a structured catalogue of products and places, curated lists, saves, maps, and photo-based reviews. Early value must exist before a large community forms: imported catalogues, useful details, lists, and the food map should work on their own.
+BanFan helps Chinese-speaking users discover Korean food, beauty, lifestyle, and fashion through a structured catalogue of products and places, curated lists, saves, maps, photo-based reviews, community posts, and grounded site search. Early value must exist before a large community forms: imported catalogues, useful details, lists, the food map, and grounded answers should work on their own.
 
 ## Positioning
 
-BanFan is not a purchasing or daigou platform and not a generic social feed. It is a Chinese-language Korea consumption guide whose content is organized around durable product and place records, then enriched by mandatory-photo user reviews.
+BanFan is not a purchasing or daigou platform and not a generic social feed. It is a Chinese-language Korea consumption guide whose structured product and place records remain primary. A free-form photo community captures discoveries that do not yet fit the catalogue, while grounded Q&A turns the catalogue, map, reviews, and posts into direct answers without inventing recommendations.
 
 ## Operating Context
 
@@ -33,7 +33,9 @@ BanFan is not a purchasing or daigou platform and not a generic social feed. It 
 - Food supports both a list and a map, including adding a new place.
 - Non-food items are imported by the platform. Current evidence includes an Olive Young seed catalogue.
 - Reviews require at least one real photo; user photos belong in reviews rather than replacing the official catalogue image.
-- Users can search, filter, save, open details, and submit reviews.
+- Community posts require at least one real photo but do not require an existing product or place; linking a post back to a durable record is encouraged when possible.
+- “问一问” answers questions only from existing site evidence and shows the underlying products, places, reviews, or posts as clickable sources.
+- Users can search, filter, save, open details, publish community posts, ask grounded questions, and submit reviews.
 - Global search crosses all four channels, and discovery lists default to popularity measured by review count.
 - Barcode scanning is intentionally out of scope for the current product.
 - The current implementation is a static HTML/CSS/JavaScript web app backed by Supabase and deployed with GitHub Pages.
@@ -57,7 +59,7 @@ BanFan is not a purchasing or daigou platform and not a generic social feed. It 
 ## Product Principles
 
 1. Useful before community: catalogue, map, and lists must stand on their own during cold start.
-2. Structure before feed: every recommendation should resolve to a durable product or place record.
+2. Structure before feed: recommendations should resolve to durable product, place, review, or post evidence; free-form posts may later be linked to catalogue records.
 3. Trust through proof: reviews require real photos and specific lived experience.
 4. Travel-ready clarity: a visitor should quickly understand what to choose, where to find it, and why it is worth considering.
 5. Korea first, globally extensible: data and interaction patterns should expand to other countries without erasing local context.

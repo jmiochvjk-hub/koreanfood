@@ -8,6 +8,7 @@
   <title>伴饭 · 来韩国照着选</title>
   <link rel="stylesheet" href="./tokens.css?v=20260927h" />
   <link rel="stylesheet" href="./redesign.css?v=20260927o" />
+  <link rel="stylesheet" href="./community.css?v=20260927a" />
 </head>
 <body data-channel="food">
   <header class="site-header">
@@ -16,6 +17,11 @@
         <strong>BANFAN</strong>
         <span>伴饭</span>
       </a>
+      <nav class="product-nav" aria-label="主要页面">
+        <button class="is-active" type="button" data-app-view="discover" aria-current="page">发现</button>
+        <button type="button" data-app-view="community">社区</button>
+        <button type="button" data-app-view="ask">问一问</button>
+      </nav>
       <label class="global-search" for="searchInput">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
         <input id="searchInput" type="search" aria-label="全站搜索商品、品牌或餐厅" placeholder="全站搜索商品、品牌或餐厅" autocomplete="off" />
@@ -28,7 +34,7 @@
     </div>
   </header>
 
-  <main class="catalog-shell">
+  <main class="catalog-shell" id="discoverView" data-view-panel="discover">
     <nav class="category-launcher" aria-label="四大频道">
       <button class="category-entry is-active" type="button" data-channel="food" aria-current="page">
         <span class="entry-copy"><strong>美食</strong><small>餐厅 · 零食 · 饮料</small></span><span class="entry-en">FOOD</span>
@@ -129,7 +135,69 @@
     </section>
   </main>
 
-  <button class="mobile-review-button" id="mobileReviewButton" type="button">＋ 晒图评价</button>
+  <main class="community-shell" id="communityView" data-view-panel="community" hidden>
+    <header class="community-intro">
+      <div>
+        <p>不必先找到品目，也可以分享。</p>
+        <h1>大家最近<br />在韩国发现了什么</h1>
+      </div>
+      <div class="community-intro-action">
+        <p>餐厅偶遇、开箱、穿搭和生活细节都可以发。至少一张真实照片，通过安全检查后直接公开。</p>
+        <button id="openPostComposerButton" class="primary-button" type="button">发布图文</button>
+      </div>
+    </header>
+    <nav class="community-filters" id="communityFilters" aria-label="社区频道">
+      <button class="is-active" type="button" data-post-channel="all" aria-pressed="true">全部</button>
+      <button type="button" data-post-channel="food" aria-pressed="false">美食</button>
+      <button type="button" data-post-channel="beauty" aria-pressed="false">美妆</button>
+      <button type="button" data-post-channel="life" aria-pressed="false">生活</button>
+      <button type="button" data-post-channel="fashion" aria-pressed="false">潮流</button>
+    </nav>
+    <div class="community-feed" id="communityFeed" aria-live="polite"></div>
+    <div class="community-empty" id="communityEmpty" hidden>
+      <strong>这里还没有帖子。</strong>
+      <p>成为第一个分享真实发现的人。</p>
+      <button class="text-link-button" id="emptyPostButton" type="button">发布第一篇 →</button>
+    </div>
+  </main>
+
+  <main class="ask-shell" id="askView" data-view-panel="ask" hidden>
+    <section class="ask-hero">
+      <div class="ask-heading">
+        <p>答案来自伴饭现有的商品、地点、评价和帖子。</p>
+        <h1>来韩国，<br />你想问什么？</h1>
+      </div>
+      <form class="ask-form" id="askForm">
+        <label for="askInput">你的问题</label>
+        <textarea id="askInput" minlength="2" maxlength="120" required rows="4" placeholder="例如：一个人在弘大吃什么？敏感肌去 OY 买哪款防晒？"></textarea>
+        <div class="ask-submit-row">
+          <span>我们不会凭空编推荐；每个答案都会附上站内依据。</span>
+          <button id="askSubmitButton" class="primary-button" type="submit">在站内找答案</button>
+        </div>
+      </form>
+    </section>
+    <section class="ask-examples" aria-label="示例问题">
+      <span>试着问</span>
+      <button type="button">一个人在弘大吃什么？</button>
+      <button type="button">敏感肌防晒买什么？</button>
+      <button type="button">Daiso 有什么旅行好物？</button>
+    </section>
+    <section class="ask-result" id="askResult" hidden aria-live="polite" aria-busy="false">
+      <header><span>伴饭回答</span><button id="askAgainButton" type="button">换一个问题</button></header>
+      <div class="ask-answer" id="askAnswer"></div>
+      <div class="ask-sources">
+        <h2>答案依据</h2>
+        <div id="askSourceList"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-app-nav" aria-label="移动端主要页面">
+    <button class="is-active" type="button" data-app-view="discover" aria-current="page"><span aria-hidden="true">⌂</span>发现</button>
+    <button type="button" data-app-view="community"><span aria-hidden="true">▦</span>社区</button>
+    <button type="button" data-app-view="ask"><span aria-hidden="true">?</span>问一问</button>
+    <button id="mobileReviewButton" type="button"><span aria-hidden="true">＋</span><span id="mobilePublishLabel">写评价</span></button>
+  </nav>
 
   <div class="auth-modal" id="authModal" hidden>
     <button class="modal-backdrop" id="authBackdrop" type="button" aria-label="关闭登录"></button>
@@ -137,9 +205,10 @@
       <button id="closeAuthButton" class="close-button auth-close" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
       <div class="auth-intro">
         <h2 id="authTitle">留下真正有用的体验。</h2>
-        <p>浏览不需要注册。登录后可以发布带图评价、补充地点，并同步收藏。</p>
+        <p>浏览和提问不需要注册。登录后可以发布图文、带图评价、补充地点，并同步收藏。</p>
         <ul>
           <li>评价必须包含真实照片</li>
+          <li>社区图文至少包含一张照片</li>
           <li>商品评价绑定已有品目</li>
           <li>新地点仅开放在美食地图补充</li>
         </ul>
@@ -175,12 +244,65 @@
         <div id="authAccount" class="auth-state" hidden>
           <span>当前账号</span>
           <h3 id="authAccountEmail"></h3>
-          <p>你已经可以发布带图评价、补充地点，并在不同设备同步收藏。</p>
+          <p>你已经可以发布社区图文、带图评价、补充地点，并在不同设备同步收藏。</p>
           <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
         </div>
         <p id="authStatus" class="auth-status" role="status" hidden></p>
       </div>
     </section>
+  </div>
+
+  <div class="post-modal" id="postModal" hidden>
+    <button class="modal-backdrop" id="postBackdrop" type="button" aria-label="关闭发布"></button>
+    <section class="post-sheet" role="dialog" aria-modal="true" aria-labelledby="postComposerTitle">
+      <header class="post-sheet-header">
+        <div><p>自由图文 · 至少一张真实照片</p><h2 id="postComposerTitle">分享你的韩国发现</h2></div>
+        <button id="closePostButton" class="close-button" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
+      </header>
+      <form id="postForm" class="post-form">
+        <div class="post-form-row">
+          <label>频道
+            <select id="postChannel" required>
+              <option value="food">美食</option><option value="beauty">美妆</option>
+              <option value="life">生活</option><option value="fashion">潮流</option>
+            </select>
+          </label>
+          <label>照片（1–9 张）
+            <input id="postPhotos" type="file" accept="image/*" multiple required />
+          </label>
+        </div>
+        <div id="postPhotoPreview" class="post-photo-preview" hidden></div>
+        <label>标题
+          <input id="postTitle" type="text" minlength="4" maxlength="80" required placeholder="一句话说清这次发现" />
+        </label>
+        <label>正文
+          <textarea id="postBody" minlength="10" maxlength="2000" required rows="7" placeholder="在哪里发现、为什么值得记录、适合谁……"></textarea>
+        </label>
+        <label>关联站内品目（可选）
+          <input id="postLinkInput" list="postLinkSuggestions" autocomplete="off" placeholder="输入商品或餐厅名称，让别人能继续查看详情" />
+          <datalist id="postLinkSuggestions"></datalist>
+        </label>
+        <p class="form-note">图文会由 DeepSeek 自动检查色情和暴力内容；正常内容会立即发布。关联品目不是必填。</p>
+        <div class="form-actions">
+          <button class="quiet-button" id="cancelPostButton" type="button">取消</button>
+          <button class="submit-review" id="submitPostButton" type="submit">发布图文</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="post-detail-modal" id="postDetailModal" hidden>
+    <button class="modal-backdrop" id="postDetailBackdrop" type="button" aria-label="关闭帖子"></button>
+    <article class="post-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="postDetailTitle">
+      <button id="closePostDetailButton" class="close-button post-detail-close" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
+      <div class="post-detail-gallery" id="postDetailGallery"></div>
+      <div class="post-detail-copy">
+        <p id="postDetailMeta"></p>
+        <h2 id="postDetailTitle"></h2>
+        <div id="postDetailBody"></div>
+        <button id="postDetailLinkedButton" class="text-link-button" type="button" hidden></button>
+      </div>
+    </article>
   </div>
 
   <div class="review-modal" id="reviewModal" hidden>
@@ -276,6 +398,7 @@
   </template>
 
   <script src="./config.js?v=20260927l"></script>
-  <script src="./app.js?v=20260927p"></script>
+  <script src="./app.js?v=20260927q"></script>
+  <script src="./community.js?v=20260927a"></script>
 </body>
 </html>
