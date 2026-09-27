@@ -65,7 +65,7 @@ function makeShelf(id, title, category, note, glyph) {
 
 const elements = {
   search: document.querySelector("#searchInput"),
-  categoryEntries: document.querySelectorAll(".category-entry"),
+  channelTriggers: document.querySelectorAll("button[data-channel]"),
   eyebrow: document.querySelector("#channelEyebrow"),
   title: document.querySelector("#channelTitle"),
   description: document.querySelector("#channelDescription"),
@@ -103,6 +103,21 @@ const elements = {
   photoPreview: document.querySelector("#reviewPhotoPreview"),
   reviewText: document.querySelector("#reviewText"),
   missingItem: document.querySelector("#missingItemButton"),
+  detailModal: document.querySelector("#detailModal"),
+  detailBackdrop: document.querySelector("#detailBackdrop"),
+  closeDetail: document.querySelector("#closeDetailButton"),
+  detailImage: document.querySelector("#detailImage"),
+  detailCategory: document.querySelector("#detailCategory"),
+  detailTitle: document.querySelector("#detailTitle"),
+  detailOriginal: document.querySelector("#detailOriginal"),
+  detailNote: document.querySelector("#detailNote"),
+  detailRating: document.querySelector("#detailRating"),
+  detailReviewCount: document.querySelector("#detailReviewCount"),
+  detailFavorite: document.querySelector("#detailFavoriteButton"),
+  detailReview: document.querySelector("#detailReviewButton"),
+  detailSource: document.querySelector("#detailSourceLink"),
+  detailReviewSummary: document.querySelector("#detailReviewSummary"),
+  detailReviewList: document.querySelector("#detailReviewList"),
   toast: document.querySelector("#toast"),
 };
 
@@ -115,7 +130,8 @@ let localReviews = loadArray(REVIEWS_KEY);
 let favoritesOnly = false;
 let selectedItemId = null;
 let toastTimer = null;
-let photoObjectUrl = null;
+let photoObjectUrls = [];
+let detailItem = null;
 let foodView = "list";
 let map = null;
 let kakaoSdk = null;
@@ -127,7 +143,7 @@ let selectedCoordinates = null;
 let draftOverlay = null;
 let visibleLimit = PAGE_SIZE;
 
-elements.categoryEntries.forEach((entry) => {
+elements.channelTriggers.forEach((entry) => {
   entry.addEventListener("click", () => switchChannel(entry.dataset.channel));
 });
 elements.search.addEventListener("input", () => resetAndRender());
@@ -163,13 +179,28 @@ elements.openReview.addEventListener("click", () => openReviewModal());
 elements.mobileReview.addEventListener("click", () => openReviewModal());
 elements.closeReview.addEventListener("click", closeReviewModal);
 elements.backdrop.addEventListener("click", closeReviewModal);
+elements.closeDetail.addEventListener("click", closeDetailModal);
+elements.detailBackdrop.addEventListener("click", closeDetailModal);
+elements.detailFavorite.addEventListener("click", () => {
+  if (!detailItem) return;
+  toggleFavorite(detailItem.id);
+  syncDetailFavorite();
+});
+elements.detailReview.addEventListener("click", () => {
+  if (!detailItem) return;
+  const item = detailItem;
+  closeDetailModal();
+  openReviewModal(item);
+});
 elements.photo.addEventListener("change", previewPhoto);
 elements.missingItem.addEventListener("click", () => {
   showToast("缺少品目会进入平台审核队列，不会直接创建重复条目。");
 });
 elements.form.addEventListener("submit", saveReview);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !elements.modal.hidden) closeReviewModal();
+  if (event.key !== "Escape") return;
+  if (!elements.modal.hidden) closeReviewModal();
+  else if (!elements.detailModal.hidden) closeDetailModal();
 });
 
 async function init() {
@@ -250,12 +281,13 @@ function mapCatalogItem(item) {
     searchText: [item.name_zh, item.name_ko, item.name_en, item.brand_name_zh, item.brand_name_ko].filter(Boolean).join(" "),
     category: item.category_name_zh || "其他",
     note: `${brand}${price ? ` · ₩${price.toLocaleString("ko-KR")}` : ""}`,
+    brand,
+    price,
     glyph: brand.slice(0, 1),
     rating: Number(item.rating_average || 0),
     reviewCount: Math.max(0, Number(item.review_count || 0)),
     imageUrl: item.hero_image_url || "",
     sourceUrl: attributes.source_url || "",
-    barcodeStatus: attributes.barcode_status || "unknown",
     featuredOrder: listOrder + Number(attributes.source_rank || 999),
     kind: "product",
   };
@@ -267,6 +299,8 @@ function mapFoodPlace(place) {
     title: place.name || "未命名品目",
     category: place.category || "美食",
     note: place.note || place.dish || "等待第一条真实体验。",
+    brand: place.category || "韩国美食",
+    price: Number(place.price || 0),
     glyph: (place.category || "食").slice(0, 1),
     rating: Number(place.rating || 0),
     reviewCount: Math.max(0, Number(place.submission_count || 0)),
@@ -286,7 +320,7 @@ function switchChannel(channel) {
   document.body.dataset.channel = channel;
   elements.search.value = "";
   elements.favorites.textContent = "♡ 收藏";
-  elements.categoryEntries.forEach((entry) => {
+  elements.channelTriggers.forEach((entry) => {
     entry.classList.toggle("is-active", entry.dataset.channel === channel);
   });
   const config = channelCatalog[channel];
@@ -380,6 +414,8 @@ function render() {
       }, { once: true });
     }
     card.dataset.kind = item.kind;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `查看 ${item.title} 详情`);
     card.querySelector(".card-category").textContent = item.category.toUpperCase();
     card.querySelector(".card-title").textContent = item.title;
     const originalName = card.querySelector(".card-original");
@@ -394,18 +430,23 @@ function render() {
     const favorite = card.querySelector(".card-favorite");
     favorite.dataset.active = String(favoriteIds.has(item.id));
     favorite.textContent = favoriteIds.has(item.id) ? "♥" : "♡";
-    favorite.addEventListener("click", () => toggleFavorite(item.id));
-    const reviewButton = card.querySelector(".card-review");
-    const sourceLink = card.querySelector(".card-source");
-    if (item.sourceUrl) sourceLink.href = item.sourceUrl;
-    else sourceLink.hidden = true;
+    favorite.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleFavorite(item.id);
+    });
     if (item.kind === "shelf") {
-      reviewButton.textContent = "浏览品目 →";
-      reviewButton.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
+      card.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
     } else {
-      reviewButton.addEventListener("click", () => openReviewModal(item));
+      card.addEventListener("click", () => openDetailModal(item));
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetailModal(item);
+        }
+      });
     }
     elements.grid.append(card);
+    if (index === 7 && currentChannel !== "food") elements.grid.append(createFeedAd());
   });
   const hasMore = currentChannel !== "food" && visibleItems.length < items.length;
   elements.more.hidden = !hasMore;
@@ -626,6 +667,71 @@ function toggleFavorite(id) {
   render();
 }
 
+function createFeedAd() {
+  const ad = document.createElement("aside");
+  ad.className = "catalog-ad ad-slot";
+  ad.dataset.adPlacement = `${currentChannel}-feed`;
+  ad.innerHTML = `
+    <span class="ad-label">SPONSORED · 品牌合作</span>
+    <div><strong>新品和品牌故事</strong><p>以后每 8–12 件商品最多出现一个，并始终明确标注。</p></div>
+    <small>合作位暂未开放</small>`;
+  return ad;
+}
+
+function openDetailModal(item) {
+  detailItem = item;
+  elements.detailCategory.textContent = `${channelCatalog[item.channel || currentChannel]?.eyebrow || "BANFAN"} · ${item.category}`;
+  elements.detailTitle.textContent = item.title;
+  elements.detailOriginal.textContent = item.originalName || "";
+  elements.detailOriginal.hidden = !item.originalName;
+  elements.detailNote.textContent = item.note;
+  elements.detailRating.textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
+  elements.detailReviewCount.textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "还没有评价";
+  elements.detailImage.src = item.imageUrl || "";
+  elements.detailImage.alt = item.imageUrl ? `${item.title} 官方商品图` : "";
+  elements.detailImage.parentElement.classList.toggle("has-image", Boolean(item.imageUrl));
+  elements.detailImage.hidden = !item.imageUrl;
+  elements.detailSource.href = item.sourceUrl || "#";
+  elements.detailSource.hidden = !item.sourceUrl;
+  syncDetailFavorite();
+  renderDetailReviews(item);
+  elements.detailModal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeDetailModal() {
+  elements.detailModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  detailItem = null;
+}
+
+function syncDetailFavorite() {
+  if (!detailItem) return;
+  const active = favoriteIds.has(detailItem.id);
+  elements.detailFavorite.textContent = active ? "♥ 已收藏" : "♡ 收藏";
+  elements.detailFavorite.dataset.active = String(active);
+}
+
+function renderDetailReviews(item) {
+  const reviews = localReviews.filter((review) => review.itemId === item.id);
+  elements.detailReviewSummary.textContent = reviews.length ? `${reviews.length} 条当前设备评价` : "等待第一条真实体验";
+  if (!reviews.length) {
+    elements.detailReviewList.innerHTML = '<div class="review-empty"><strong>还没有带图评价</strong><p>用过或吃过之后，上传实拍并留下第一条真实体验。</p></div>';
+    return;
+  }
+  elements.detailReviewList.innerHTML = reviews.map((review) => `
+    <article class="detail-review-card">
+      <div><strong>★ ${Number(review.rating).toFixed(1)}</strong><span>${formatDate(review.createdAt)}</span></div>
+      <p>${escapeHtml(review.text)}</p>
+      <small>${review.hasPhoto ? "已提交实拍照片 · 云端上传接入后显示" : "无照片"}</small>
+    </article>`).join("");
+}
+
+function formatDate(value) {
+  try { return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value)); }
+  catch { return "刚刚"; }
+}
+
 function openReviewModal(item = null) {
   const available = allCatalogItems();
   if (!available.length) {
@@ -657,12 +763,18 @@ function saveReview(event) {
     elements.itemInput.focus();
     return;
   }
+  if (!elements.photo.files || !elements.photo.files.length) {
+    showToast("带图评价至少需要 1 张实拍照片。 ");
+    elements.photo.focus();
+    return;
+  }
   localReviews.unshift({
     id: crypto.randomUUID(),
     itemId: item.id,
     rating: Number(elements.rating.value),
     text: elements.reviewText.value.trim(),
-    hasPhoto: Boolean(elements.photo.files && elements.photo.files[0]),
+    hasPhoto: true,
+    photoCount: Math.min(elements.photo.files.length, 6),
     createdAt: new Date().toISOString(),
   });
   localStorage.setItem(REVIEWS_KEY, JSON.stringify(localReviews));
@@ -673,19 +785,27 @@ function saveReview(event) {
 
 function previewPhoto() {
   clearPhotoPreview();
-  const file = elements.photo.files && elements.photo.files[0];
-  if (!file) return;
-  photoObjectUrl = URL.createObjectURL(file);
-  const image = document.createElement("img");
-  image.src = photoObjectUrl;
-  image.alt = "待发布照片预览";
-  elements.photoPreview.append(image);
+  const files = [...(elements.photo.files || [])];
+  if (!files.length) return;
+  if (files.length > 6) {
+    elements.photo.value = "";
+    showToast("一次最多上传 6 张照片。 ");
+    return;
+  }
+  files.forEach((file, index) => {
+    const url = URL.createObjectURL(file);
+    photoObjectUrls.push(url);
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = `待发布照片预览 ${index + 1}`;
+    elements.photoPreview.append(image);
+  });
   elements.photoPreview.hidden = false;
 }
 
 function clearPhotoPreview() {
-  if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
-  photoObjectUrl = null;
+  photoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  photoObjectUrls = [];
   elements.photoPreview.innerHTML = "";
   elements.photoPreview.hidden = true;
 }

@@ -3,56 +3,69 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#ff553e" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
   <title>伴饭 · 来韩国照着选</title>
-  <link rel="stylesheet" href="./styles.css?v=20260927f" />
+  <link rel="stylesheet" href="./styles.css?v=20260927g" />
 </head>
 <body data-channel="food">
   <header class="site-header">
-    <a class="brand" href="./" aria-label="伴饭首页">
-      <span class="brand-mark">伴</span>
-      <span><strong>伴饭</strong><small>BANFAN KOREA</small></span>
-    </a>
-    <label class="global-search" for="searchInput">
-      <span>⌕</span>
-      <input id="searchInput" type="search" placeholder="搜索品目、品牌、店铺或关键词" autocomplete="off" />
-    </label>
-    <div class="header-actions">
-      <button id="openFavoritesButton" class="quiet-button" type="button">♡ 收藏</button>
-      <button id="openReviewButton" class="review-button" type="button">＋ 晒图评价</button>
+    <div class="site-header-inner">
+      <a class="brand" href="./" aria-label="伴饭首页">
+        <span class="brand-mark">伴</span>
+        <span><strong>伴饭</strong><small>BANFAN</small></span>
+      </a>
+      <nav class="top-nav" aria-label="主要频道">
+        <button class="nav-link is-active" type="button" data-channel="food">美食</button>
+        <button class="nav-link" type="button" data-channel="beauty">美妆</button>
+        <button class="nav-link" type="button" data-channel="life">生活</button>
+        <button class="nav-link" type="button" data-channel="fashion">潮流</button>
+      </nav>
+      <label class="global-search" for="searchInput">
+        <span aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="搜索商品、品牌或店铺" autocomplete="off" />
+      </label>
+      <div class="header-actions">
+        <button id="openFavoritesButton" class="text-button" type="button">收藏</button>
+        <button id="openReviewButton" class="primary-button" type="button">写评价</button>
+      </div>
     </div>
   </header>
 
   <main class="catalog-shell">
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">KOREA, WITHOUT THE GUESSWORK</p>
-        <h1>来韩国，<br />照着选就行。</h1>
-        <p>商品先由平台建立完整品目库，再让真实用户补上照片、评分和体验；餐厅地点则允许用户共同补充。</p>
+    <section class="hero" aria-label="伴饭精选">
+      <div class="hero-feature">
+        <p class="eyebrow">BANFAN EDIT · SEOUL</p>
+        <h1>来韩国，<br />选真正值得的。</h1>
+        <p>从餐厅到美妆、生活与潮流。先看清商品和地点，再看中文用户的真实体验。</p>
+        <button class="hero-link" type="button" data-channel="beauty">查看 Olive Young 200 件精选 <span>→</span></button>
       </div>
-      <aside class="product-rule">
-        <span>伴饭原则 01</span>
-        <strong>商品由平台导入<br />地点与体验由用户共建</strong>
+      <aside class="hero-partner ad-slot" data-ad-placement="home-hero">
+        <span class="ad-label">BRAND PARTNERSHIP · 品牌合作</span>
+        <div>
+          <p>预留给韩国品牌、门店新品和城市专题。</p>
+          <strong>内容必须有用，广告必须标明。</strong>
+        </div>
+        <small>合作位暂未开放</small>
       </aside>
     </section>
 
     <nav class="category-launcher" aria-label="四大频道">
       <button class="category-entry is-active" type="button" data-channel="food">
-        <span class="entry-number">01</span><span class="entry-icon">食</span>
-        <span class="entry-copy"><strong>美食</strong><small>FOOD · 餐厅 / 零食 / 饮料</small></span><span class="entry-arrow">↗</span>
+        <span class="entry-number">01</span>
+        <span class="entry-copy"><strong>美食</strong><small>FOOD · 餐厅 / 零食 / 饮料</small></span><span class="entry-arrow">→</span>
       </button>
       <button class="category-entry" type="button" data-channel="beauty">
-        <span class="entry-number">02</span><span class="entry-icon">妆</span>
-        <span class="entry-copy"><strong>美妆</strong><small>BEAUTY · OY / 护肤 / 彩妆</small></span><span class="entry-arrow">↗</span>
+        <span class="entry-number">02</span>
+        <span class="entry-copy"><strong>美妆</strong><small>BEAUTY · OY / 护肤 / 彩妆</small></span><span class="entry-arrow">→</span>
       </button>
       <button class="category-entry" type="button" data-channel="life">
-        <span class="entry-number">03</span><span class="entry-icon">物</span>
-        <span class="entry-copy"><strong>生活</strong><small>LIFE · DAISO / 便利店 / 家居</small></span><span class="entry-arrow">↗</span>
+        <span class="entry-number">03</span>
+        <span class="entry-copy"><strong>生活</strong><small>LIFE · DAISO / 便利店 / 家居</small></span><span class="entry-arrow">→</span>
       </button>
       <button class="category-entry" type="button" data-channel="fashion">
-        <span class="entry-number">04</span><span class="entry-icon">潮</span>
-        <span class="entry-copy"><strong>潮流</strong><small>FASHION · 品牌 / 穿搭 / 街区</small></span><span class="entry-arrow">↗</span>
+        <span class="entry-number">04</span>
+        <span class="entry-copy"><strong>潮流</strong><small>FASHION · 品牌 / 穿搭 / 街区</small></span><span class="entry-arrow">→</span>
       </button>
     </nav>
 
@@ -138,12 +151,12 @@
             </select>
           </label>
           <label>实拍照片
-            <input id="reviewPhoto" type="file" accept="image/*" />
+            <input id="reviewPhoto" type="file" accept="image/*" multiple required />
           </label>
         </div>
         <div id="reviewPhotoPreview" class="photo-preview" hidden></div>
         <label>真实体验
-          <textarea id="reviewText" required rows="4" maxlength="500" placeholder="口味 / 肤感 / 耐用度 / 尺码……写你真正用过之后才知道的事"></textarea>
+          <textarea id="reviewText" required minlength="10" rows="4" maxlength="500" placeholder="至少 10 个字：口味 / 肤感 / 耐用度 / 尺码……"></textarea>
         </label>
         <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；搜不到时提交“缺少品目”，由平台审核并入库。美食地点可在 FOOD 地图新增。</p>
         <div class="form-actions">
@@ -154,10 +167,40 @@
     </section>
   </div>
 
+  <div class="detail-modal" id="detailModal" hidden>
+    <button class="modal-backdrop" id="detailBackdrop" type="button" aria-label="关闭详情"></button>
+    <article class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <button id="closeDetailButton" class="close-button detail-close" type="button" aria-label="关闭">×</button>
+      <div class="detail-product">
+        <div class="detail-media"><img id="detailImage" alt="" /></div>
+        <div class="detail-copy">
+          <p class="eyebrow" id="detailCategory"></p>
+          <h2 id="detailTitle"></h2>
+          <p class="detail-original" id="detailOriginal"></p>
+          <p class="detail-note" id="detailNote"></p>
+          <div class="detail-score"><strong id="detailRating"></strong><span id="detailReviewCount"></span></div>
+          <div class="detail-actions">
+            <button id="detailFavoriteButton" class="secondary-button" type="button">收藏</button>
+            <button id="detailReviewButton" class="primary-button" type="button">写带图评价</button>
+          </div>
+          <a id="detailSourceLink" class="detail-source" target="_blank" rel="noopener noreferrer">查看官方商品页 →</a>
+        </div>
+      </div>
+      <section class="detail-reviews">
+        <header><div><p class="eyebrow">REAL EXPERIENCES</p><h3>真实带图评价</h3></div><span id="detailReviewSummary"></span></header>
+        <div id="detailReviewList" class="detail-review-list"></div>
+      </section>
+      <aside class="detail-ad ad-slot" data-ad-placement="product-detail">
+        <span class="ad-label">BRAND PARTNERSHIP · 品牌合作</span>
+        <p>同类商品、品牌故事或门店活动将出现在这里。</p>
+      </aside>
+    </article>
+  </div>
+
   <div class="toast" id="toast" role="status" hidden></div>
 
   <template id="catalogCardTemplate">
-    <article class="catalog-card">
+    <article class="catalog-card" tabindex="0">
       <div class="card-visual">
         <img class="card-image" alt="" loading="lazy" decoding="async" hidden>
         <span class="card-index"></span><span class="card-glyph"></span>
@@ -170,14 +213,10 @@
         <div class="card-meta"><span class="card-rating"></span><span class="card-reviews"></span></div>
       </div>
       <button class="card-favorite" type="button" aria-label="收藏">♡</button>
-      <div class="card-actions">
-        <a class="card-source" target="_blank" rel="noopener noreferrer">官网查看 ↗</a>
-        <button class="card-review" type="button">晒图评价 →</button>
-      </div>
     </article>
   </template>
 
-  <script src="./config.js?v=20260927e"></script>
-  <script src="./app.js?v=20260927e"></script>
+  <script src="./config.js?v=20260927g"></script>
+  <script src="./app.js?v=20260927g"></script>
 </body>
 </html>
