@@ -117,6 +117,17 @@
   font-size: 0.78rem;
 }
 
+.community-loading button {
+  display: block;
+  min-height: 2.75rem;
+  margin-top: var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-strong);
+  padding: 0 var(--space-sm);
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .community-card { min-width: 0; }
 .community-card-open {
   display: grid;
@@ -169,6 +180,25 @@
 .community-empty strong { font-family: var(--font-editorial); font-size: 1.75rem; font-weight: 550; }
 .community-empty p { color: var(--color-ink-muted); font-size: 0.78rem; }
 .text-link-button { min-height: 2.75rem; border: 0; padding: 0; background: transparent; font-size: 0.76rem; font-weight: 700; text-decoration: underline; text-underline-offset: 0.3rem; }
+
+.site-search-community {
+  margin-top: var(--space-2xl);
+  padding-top: var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule-strong);
+}
+
+.site-search-community > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-lg); margin-bottom: var(--space-md); }
+.site-search-community h3 { margin: 0; font-family: var(--font-editorial); font-size: 1.5rem; font-weight: 560; }
+.site-search-community header span { color: var(--color-ink-muted); font-size: 0.7rem; }
+.site-search-community > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rule-hair); background: var(--color-rule); }
+.site-search-post { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: var(--space-sm); min-height: 6.5rem; border: 0; padding: var(--space-xs); text-align: left; background: var(--color-surface); }
+.site-search-post:hover { background: color-mix(in oklch, var(--color-surface) 72%, var(--color-paper)); }
+.site-search-post img,
+.site-search-post > span:first-child { display: grid; place-items: center; width: 5rem; aspect-ratio: 1; object-fit: cover; color: var(--color-ink-muted); background: var(--color-surface-muted); font-family: var(--font-editorial); font-size: 0.8rem; }
+.site-search-post > span:last-child { display: grid; gap: 0.28rem; min-width: 0; }
+.site-search-post strong { font-size: 0.78rem; line-height: 1.4; overflow-wrap: anywhere; }
+.site-search-post small { color: var(--color-ink-muted); font-size: 0.67rem; line-height: 1.45; }
+.site-search-empty { grid-column: 1 / -1; margin: 0; padding: var(--space-md); color: var(--color-ink-muted); background: var(--color-surface); font-size: 0.76rem; }
 
 .ask-hero {
   display: grid;
@@ -326,7 +356,9 @@
     backdrop-filter: blur(14px);
   }
   .mobile-app-nav button { display: grid; place-items: center; align-content: center; gap: 0.16rem; min-height: 3.75rem; border: 0; padding: 0.25rem; color: var(--color-ink-muted); background: transparent; font-size: 0.64rem; font-weight: 650; }
-  .mobile-app-nav button > span:first-child { font-size: 1rem; line-height: 1; }
+  .mobile-app-nav button > svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-app-nav button:first-child > svg,
+  .mobile-app-nav button:nth-child(2) > svg { fill: none; }
   .mobile-app-nav button.is-active { color: var(--color-ink); }
   .mobile-app-nav #mobileReviewButton { color: var(--color-on-accent); background: var(--color-ink); }
 
@@ -358,11 +390,15 @@
   .post-sheet { padding: var(--space-md); }
   .post-sheet-header h2 { font-size: 1.55rem; }
   .post-form-row { grid-template-columns: minmax(0, 1fr); }
+  .post-form input,
+  .post-form select,
+  .post-form textarea { font-size: 16px; }
   .post-photo-preview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .post-detail-gallery { min-height: 45dvh; max-height: 55dvh; }
   .post-detail-gallery img { min-height: 12rem; }
   .post-detail-gallery img:only-child { min-height: 45dvh; max-height: 55dvh; }
   .post-detail-copy { padding: var(--space-xl) var(--space-md); }
+  .site-search-community > div { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

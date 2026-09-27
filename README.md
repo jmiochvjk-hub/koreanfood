@@ -23,7 +23,7 @@
 - `index.html`：品目发现、FOOD 地图与评价界面。
 - `tokens.css` 与 `redesign.css`：设计变量和响应式界面。
 - `app.js`：云端商品/地点读取、搜索筛选、分页、收藏同步、带图评价、FOOD 地图和地点新增。
-- `config.js`：浏览器可用的 Supabase anon 配置、腾讯地图 JS key，以及迁移期间可选的 Kakao 后备 key。
+- `config.js`：浏览器可用的 Supabase anon 配置和 Kakao JavaScript key。
 - `migrations/`：分阶段 Supabase 数据结构与 RLS 迁移。
 - `supabase-schema.sql`：仅用于旧版 `food_places` 的初始安装，不再代表完整模型。
 
@@ -66,9 +66,9 @@ python3 -m http.server 4173
 
 ## 地图配置
 
-网页已具备腾讯地图 JavaScript API GL 适配层，但 2026-09-27 的实机测试中，腾讯地图在首尔可以加载控件和自有标记，却没有韩国道路与地名底图，因此生产配置保持关闭。下一步验证高德世界地图；在中国可访问且韩国底图完整之前，网页临时回退到 Kakao。
+网页的韩国交互地图使用 Kakao Maps。餐厅经纬度保存在 Supabase 中，不绑定地图供应商；当第三方底图在某个地区无法加载时，页面自动显示站内地点列表和完整榜单，搜索、收藏、评价与详情仍可使用。腾讯 Web 地图没有韩国道路与地名底图，高德海外商业使用需要另行授权，因此二者都不作为当前网页默认底图。
 
-餐厅经纬度保存在 Supabase 中，不绑定任何地图供应商。腾讯 key 可以留作后续微信小程序和海外 WebService 能力评估，不应因为供应商切换而迁移地点数据。
+上线前必须在 Kakao 开发者控制台为 JavaScript key 登记 `https://banfantujian.com`、`https://www.banfantujian.com` 以及本地开发 origin。中国大陆版本后续应把地图看作可替换展示层，优先评估自托管韩国矢量瓦片或小程序原生地图能力，不迁移地点数据。
 
 ## 安全
 

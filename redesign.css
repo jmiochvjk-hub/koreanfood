@@ -28,7 +28,23 @@ select,
 textarea { font: inherit; }
 
 button { color: inherit; cursor: pointer; }
-button:active { transform: translateY(1px); }
+button:active { opacity: 0.72; }
+
+.skip-link {
+  position: fixed;
+  z-index: 6000;
+  top: var(--space-xs);
+  left: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  color: var(--color-on-accent);
+  background: var(--color-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--space-lg)));
+}
+
+.skip-link:focus { transform: translateY(0); }
 
 button:focus-visible,
 input:focus-visible,
@@ -766,6 +782,9 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 .auth-state > span { color: var(--color-ink-muted); font-size: 0.7rem; }
 .auth-state .secondary-button { justify-self: start; }
 .auth-state strong { color: var(--color-ink); font-weight: 650; overflow-wrap: anywhere; }
+.account-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.danger-button { min-height: 2.75rem; border: var(--rule-hair) solid #a5322f; border-radius: var(--radius-control); padding: 0 var(--space-sm); color: #8d2724; background: transparent; font-size: 0.78rem; font-weight: 700; }
+.danger-button:hover { color: #fff; background: #8d2724; }
 .auth-otp-form { gap: var(--space-sm); margin-top: var(--space-xs); }
 .auth-otp-form input {
   min-height: 4.25rem;
@@ -869,6 +888,25 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
 .footer-brand strong { font-size: clamp(2.5rem, 7vw, 7.5rem); font-weight: 760; line-height: 0.9; letter-spacing: -0.07em; }
 .footer-brand span { max-width: 20rem; color: var(--color-ink-muted); font-size: 0.84rem; line-height: 1.6; }
 .footer-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-sm); padding-top: var(--space-md); border-top: var(--rule-hair) solid var(--color-rule); color: var(--color-ink-muted); font-size: 0.7rem; }
+.footer-links { display: flex; gap: var(--space-sm); }
+.footer-meta a { color: inherit; text-underline-offset: 0.2rem; }
+
+.policy-shell {
+  width: min(54rem, 100%);
+  min-height: 70dvh;
+  margin: 0 auto;
+  padding: clamp(3rem, 8vw, 7rem) var(--page-gutter) var(--space-3xl);
+}
+
+.policy-shell > p:first-child { margin: 0 0 var(--space-sm); color: var(--color-ink-muted); font-size: 0.72rem; }
+.policy-shell h1 { max-width: 10ch; margin: 0 0 var(--space-2xl); font-family: var(--font-editorial); font-size: clamp(3rem, 8vw, 6.5rem); font-weight: 540; line-height: 0.98; letter-spacing: -0.055em; }
+.policy-copy { border-top: var(--rule-hair) solid var(--color-rule-strong); }
+.policy-copy section { display: grid; grid-template-columns: minmax(10rem, 0.35fr) minmax(0, 1fr); gap: var(--space-xl); padding: var(--space-xl) 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
+.policy-copy h2 { margin: 0; font-size: 0.9rem; }
+.policy-copy div { color: var(--color-ink-muted); font-size: 0.84rem; line-height: 1.8; }
+.policy-copy div > :first-child { margin-top: 0; }
+.policy-copy div > :last-child { margin-bottom: 0; }
+.policy-copy a { color: var(--color-ink); text-underline-offset: 0.2rem; }
 
 .hero h1,
 .catalog-header h2,
@@ -926,6 +964,14 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   .brand { min-height: 2.75rem; align-items: center; }
   .brand strong { font-size: 1rem; }
   .global-search { grid-column: 1 / -1; grid-row: 2; min-height: 2.5rem; }
+  .global-search input,
+  .auth-form input,
+  .auth-otp-form input,
+  .review-form input,
+  .review-form select,
+  .review-form textarea,
+  .add-place-bar input,
+  .add-place-bar select { font-size: 16px; }
   .header-actions { grid-column: 2; grid-row: 1; }
   .header-actions .primary-button { display: none; }
   .header-actions .text-button { min-height: 2.75rem; border: 0; padding: 0; }
@@ -1024,11 +1070,13 @@ textarea:disabled { cursor: not-allowed; opacity: 0.55; }
   .footer-brand { align-items: flex-start; flex-direction: column; }
   .footer-brand strong { font-size: clamp(3.5rem, 20vw, 6.5rem); }
   .footer-meta { flex-direction: column; }
+  .policy-shell { padding: var(--space-xl) var(--space-sm) var(--space-2xl); }
+  .policy-copy section { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-  button:active { transform: none; }
+  button:active { opacity: 1; }
 }

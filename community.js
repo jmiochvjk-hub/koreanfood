@@ -6,6 +6,9 @@
     view: "discover",
     filter: "all",
     posts: [],
+    postsLoaded: false,
+    postsLoading: false,
+    postsLoadError: false,
     postPhotoUrls: [],
     linkMap: new Map(),
     activePost: null,
@@ -50,6 +53,10 @@
     askAnswer: document.querySelector("#askAnswer"),
     askSources: document.querySelector("#askSourceList"),
     askAgain: document.querySelector("#askAgainButton"),
+    skipLink: document.querySelector("#skipLink"),
+    searchCommunity: document.querySelector("#siteSearchCommunity"),
+    searchCommunityCount: document.querySelector("#siteSearchCommunityCount"),
+    searchCommunityResults: document.querySelector("#siteSearchCommunityResults"),
   };
 
   ui.viewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.appView, true)));
@@ -86,7 +93,10 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
   elements.search.addEventListener("input", () => {
-    if (elements.search.value.trim() && state.view !== "discover") setView("discover", true);
+    const query = elements.search.value.trim();
+    if (query && state.view !== "discover") setView("discover", true);
+    renderSiteSearchPosts(query);
+    if (query && !state.postsLoaded && !state.postsLoading) loadCommunityPosts();
   });
   window.addEventListener("popstate", syncViewFromLocation);
   window.addEventListener("hashchange", syncViewFromLocation);
@@ -119,7 +129,12 @@
     }
     state.view = next;
     window.BANFAN_ACTIVE_VIEW = next;
-    ui.viewPanels.forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== next; });
+    let activePanel = null;
+    ui.viewPanels.forEach((panel) => {
+      const active = panel.dataset.viewPanel === next;
+      panel.hidden = !active;
+      if (active) activePanel = panel;
+    });
     ui.viewButtons.forEach((button) => {
       const active = button.dataset.appView === next;
       button.classList.toggle("is-active", active);
@@ -127,10 +142,12 @@
       else button.removeAttribute("aria-current");
     });
     ui.headerSearch.hidden = next !== "discover";
+    if (ui.skipLink && activePanel) ui.skipLink.href = `#${activePanel.id}`;
     ui.mobilePublishLabel.textContent = next === "community" ? "发帖子" : "写评价";
     document.body.dataset.appView = next;
     if (next === "community") loadCommunityPosts();
     window.scrollTo({ top: 0, behavior: updateHistory ? "smooth" : "auto" });
+    if (updateHistory && activePanel) activePanel.focus({ preventScroll: true });
   }
 
   function openPostComposer() {
@@ -215,7 +232,7 @@
     const uploadedPaths = [];
     try {
       const baseUrl = config.url.replace(/\/$/, "");
-      const postResponse = await fetch(`${baseUrl}/rest/v1/community_posts`, {
+      const postResponse = await window.banfanFetch(`${baseUrl}/rest/v1/community_posts`, {
         method: "POST",
         headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
         body: JSON.stringify({
@@ -226,7 +243,7 @@
           moderation_status: "pending",
           ...linkFields,
         }),
-      });
+      }, 20_000);
       if (!postResponse.ok) throw new Error(await postResponse.text() || `HTTP ${postResponse.status}`);
       postId = (await postResponse.json())[0]?.id || "";
       if (!postId) throw new Error("POST_CREATE_FAILED");
@@ -236,20 +253,20 @@
         const blob = await createReviewUploadBlob(file);
         const storagePath = `${userId}/${postId}/${crypto.randomUUID()}.jpg`;
         const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
-        const uploadResponse = await fetch(`${baseUrl}/storage/v1/object/community-posts/${encodedPath}`, {
+        const uploadResponse = await window.banfanFetch(`${baseUrl}/storage/v1/object/community-posts/${encodedPath}`, {
           method: "POST",
           headers: { ...supabaseHeaders(), "Content-Type": "image/jpeg", "x-upsert": "false" },
           body: blob,
-        });
+        }, 60_000);
         if (!uploadResponse.ok) throw new Error(`PHOTO_UPLOAD_${uploadResponse.status}`);
         uploadedPaths.push(storagePath);
         photoRows.push({ post_id: postId, storage_path: storagePath, sort_order: index });
       }
-      const photoResponse = await fetch(`${baseUrl}/rest/v1/community_post_photos`, {
+      const photoResponse = await window.banfanFetch(`${baseUrl}/rest/v1/community_post_photos`, {
         method: "POST",
         headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(photoRows),
-      });
+      }, 20_000);
       if (!photoResponse.ok) throw new Error(`PHOTO_RECORD_${photoResponse.status}`);
 
       ui.submitPost.textContent = "正在安全检查…";
@@ -280,11 +297,11 @@
 
   async function requestPostModeration(postId) {
     const config = window.SUPABASE_CONFIG || {};
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/functions/v1/moderate-community-post`, {
+    const response = await window.banfanFetch(`${config.url.replace(/\/$/, "")}/functions/v1/moderate-community-post`, {
       method: "POST",
       headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ postId }),
-    });
+    }, 55_000);
     const value = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(response.status === 503 ? "MODERATION_UNAVAILABLE" : (value.code || `HTTP_${response.status}`));
@@ -304,20 +321,27 @@
   }
 
   async function loadCommunityPosts(force = false) {
-    if (!force && state.posts.length) {
+    if (!force && state.postsLoaded) {
       renderCommunityFeed();
+      renderSiteSearchPosts(elements.search.value.trim());
       return;
     }
+    if (!force && state.postsLoading) return;
+    state.postsLoading = true;
+    state.postsLoadError = false;
     ui.communityFeed.setAttribute("aria-busy", "true");
     ui.communityFeed.innerHTML = '<div class="community-loading">正在整理大家的最新发现…</div>';
+    renderSiteSearchPosts(elements.search.value.trim());
     const config = window.SUPABASE_CONFIG || {};
     try {
       const fields = "id,user_id,channel,title,body,linked_item_id,linked_place_id,moderation_status,created_at,cover_storage_path,photo_count,linked_title";
-      const response = await fetch(`${config.url.replace(/\/$/, "")}/rest/v1/community_post_cards?select=${fields}&order=created_at.desc&limit=120`, { headers: supabaseHeaders() });
+      const response = await window.banfanFetch(`${config.url.replace(/\/$/, "")}/rest/v1/community_post_cards?select=${fields}&order=created_at.desc&limit=48`, { headers: supabaseHeaders() }, 20_000);
       if (!response.ok) throw new Error(`HTTP_${response.status}`);
       const rows = await response.json();
       state.posts = await Promise.all(rows.map(async (post) => ({ ...post, coverUrl: await signedPostPhoto(post.cover_storage_path) })));
+      state.postsLoaded = true;
       renderCommunityFeed();
+      renderSiteSearchPosts(elements.search.value.trim());
       const ownPending = state.posts.filter((post) => post.moderation_status === "pending" && post.user_id === authSession?.user?.id);
       ownPending.forEach(async (post) => {
         try {
@@ -326,13 +350,88 @@
         } catch { /* Remains private and can retry on the next visit. */ }
       });
     } catch (error) {
-      ui.communityFeed.innerHTML = '<div class="community-loading">社区暂时没有连接上，请稍后重试。</div>';
+      state.postsLoadError = true;
+      const errorBox = document.createElement("div");
+      errorBox.className = "community-loading";
+      errorBox.textContent = "社区暂时没有连接上。";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = "重新加载";
+      retry.addEventListener("click", () => loadCommunityPosts(true));
+      errorBox.append(retry);
+      ui.communityFeed.replaceChildren(errorBox);
       ui.communityEmpty.hidden = true;
+      renderSiteSearchPosts(elements.search.value.trim());
       console.warn("[community] feed failed", error);
     } finally {
+      state.postsLoading = false;
       ui.communityFeed.setAttribute("aria-busy", "false");
+      renderSiteSearchPosts(elements.search.value.trim());
     }
   }
+
+  function renderSiteSearchPosts(rawQuery) {
+    const query = String(rawQuery || "").trim().toLowerCase();
+    if (!ui.searchCommunity || !ui.searchCommunityResults) return;
+    ui.searchCommunity.hidden = !query;
+    if (!query) return;
+    ui.searchCommunityResults.replaceChildren();
+    if (state.postsLoading && !state.postsLoaded) {
+      ui.searchCommunityCount.textContent = "搜索中";
+      const loading = document.createElement("p");
+      loading.className = "site-search-empty";
+      loading.textContent = "正在搜索社区图文…";
+      ui.searchCommunityResults.append(loading);
+      return;
+    }
+    if (state.postsLoadError) {
+      ui.searchCommunityCount.textContent = "暂时不可用";
+      const error = document.createElement("p");
+      error.className = "site-search-empty";
+      error.textContent = "社区内容暂时无法连接；商品和地点搜索仍可使用。";
+      ui.searchCommunityResults.append(error);
+      return;
+    }
+    const posts = state.posts.filter((post) => [post.title, post.body, post.linked_title, CHANNEL_LABELS[post.channel]]
+      .filter(Boolean).join(" ").toLowerCase().includes(query));
+    ui.searchCommunityCount.textContent = `${posts.length} 篇`;
+    if (!posts.length) {
+      const empty = document.createElement("p");
+      empty.className = "site-search-empty";
+      empty.textContent = "社区暂时没有匹配的图文。";
+      ui.searchCommunityResults.append(empty);
+      return;
+    }
+    posts.slice(0, 6).forEach((post) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "site-search-post";
+      if (post.coverUrl) {
+        const image = document.createElement("img");
+        image.src = post.coverUrl;
+        image.alt = "";
+        image.loading = "lazy";
+        button.append(image);
+      } else {
+        const placeholder = document.createElement("span");
+        placeholder.textContent = CHANNEL_LABELS[post.channel] || "分享";
+        button.append(placeholder);
+      }
+      const copy = document.createElement("span");
+      const title = document.createElement("strong");
+      title.textContent = post.title;
+      const meta = document.createElement("small");
+      meta.textContent = `${CHANNEL_LABELS[post.channel] || "发现"} · ${formatDate(post.created_at)}`;
+      copy.append(title, meta);
+      button.append(copy);
+      button.addEventListener("click", async () => {
+        setView("community", true);
+        await openPostDetail(post);
+      });
+      ui.searchCommunityResults.append(button);
+    });
+  }
+  window.syncBanfanSiteSearch = renderSiteSearchPosts;
 
   function renderCommunityFeed() {
     const posts = state.filter === "all" ? state.posts : state.posts.filter((post) => post.channel === state.filter);
@@ -391,11 +490,11 @@
     if (!storagePath) return "";
     const config = window.SUPABASE_CONFIG || {};
     const encodedPath = String(storagePath).split("/").map(encodeURIComponent).join("/");
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/storage/v1/object/sign/community-posts/${encodedPath}`, {
+    const response = await window.banfanFetch(`${config.url.replace(/\/$/, "")}/storage/v1/object/sign/community-posts/${encodedPath}`, {
       method: "POST",
       headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ expiresIn: 3600 }),
-    });
+    }, 15_000);
     if (!response.ok) return "";
     const value = await response.json();
     const path = value.signedURL || value.signedUrl || "";
@@ -429,7 +528,7 @@
   async function loadPostPhotos(postId) {
     const config = window.SUPABASE_CONFIG || {};
     try {
-      const response = await fetch(`${config.url.replace(/\/$/, "")}/rest/v1/community_post_photos?select=storage_path,sort_order&post_id=eq.${encodeURIComponent(postId)}&order=sort_order.asc`, { headers: supabaseHeaders() });
+      const response = await window.banfanFetch(`${config.url.replace(/\/$/, "")}/rest/v1/community_post_photos?select=storage_path,sort_order&post_id=eq.${encodeURIComponent(postId)}&order=sort_order.asc`, { headers: supabaseHeaders() }, 20_000);
       if (!response.ok) throw new Error(`HTTP_${response.status}`);
       const rows = await response.json();
       const urls = await Promise.all(rows.map((row) => signedPostPhoto(row.storage_path)));
@@ -462,11 +561,11 @@
     ui.askAnswer.textContent = "正在阅读站内商品、地点、评价和帖子…";
     ui.askSources.replaceChildren();
     try {
-      const response = await fetch(`${config.url.replace(/\/$/, "")}/functions/v1/ask-banfan`, {
+      const response = await window.banfanFetch(`${config.url.replace(/\/$/, "")}/functions/v1/ask-banfan`, {
         method: "POST",
         headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
-      });
+      }, 40_000);
       const value = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(value.message || "问一问暂时不可用。");
       ui.askAnswer.textContent = value.answer || "站内暂时没有足够内容回答这个问题。";

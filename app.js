@@ -5,6 +5,17 @@ const SUPABASE_TABLE = "food_places";
 const CATALOG_VIEW = "catalog_item_cards";
 const PAGE_SIZE = 24;
 
+async function fetchWithTimeout(input, init = {}, timeoutMs = 20_000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+window.banfanFetch = fetchWithTimeout;
+
 const channelCatalog = {
   food: {
     eyebrow: "美食 · FOOD",
@@ -87,6 +98,7 @@ const elements = {
   authAccount: document.querySelector("#authAccount"),
   authAccountEmail: document.querySelector("#authAccountEmail"),
   signOut: document.querySelector("#signOutButton"),
+  deleteAccount: document.querySelector("#deleteAccountButton"),
   authStatus: document.querySelector("#authStatus"),
   modal: document.querySelector("#reviewModal"),
   backdrop: document.querySelector("#modalBackdrop"),
@@ -143,8 +155,6 @@ let detailItem = null;
 let lastFocusedElement = null;
 let foodView = "list";
 let map = null;
-let mapProvider = null;
-let mapSdk = null;
 let kakaoSdk = null;
 let mapProviderLoadPromise = null;
 let mapOverlays = [];
@@ -172,7 +182,13 @@ elements.foodViewSwitch.addEventListener("click", (event) => {
   const button = event.target.closest("[data-view]");
   if (button) showFoodView(button.dataset.view);
 });
-elements.startAddPlace.addEventListener("click", startAddingPlace);
+elements.startAddPlace.addEventListener("click", () => {
+  if (!map) {
+    loadFoodMap();
+    return;
+  }
+  startAddingPlace();
+});
 elements.cancelAddPlace.addEventListener("click", cancelAddingPlace);
 elements.savePlace.addEventListener("click", saveNewPlace);
 elements.filters.addEventListener("click", (event) => {
@@ -205,6 +221,7 @@ elements.authOtp.addEventListener("input", () => {
   hideAuthStatus();
 });
 elements.signOut.addEventListener("click", signOut);
+elements.deleteAccount.addEventListener("click", deleteAccount);
 elements.openReview.addEventListener("click", () => openReviewModal());
 elements.mobileReview.addEventListener("click", () => {
   if (window.BANFAN_ACTIVE_VIEW === "community" && typeof window.openCommunityComposer === "function") {
@@ -320,11 +337,11 @@ async function refreshAuthSessionIfNeeded() {
   if (expiresAt > Math.floor(Date.now() / 1000) + 90) return;
   const config = window.SUPABASE_CONFIG || {};
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/token?grant_type=refresh_token`, {
+    const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
       headers: { apikey: config.anonKey, "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: authSession.refresh_token }),
-    });
+    }, 20_000);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const value = await response.json();
     authSession = {
@@ -417,11 +434,11 @@ async function requestEmailOtp(email, isResend) {
   hideAuthStatus();
   const redirectTo = `${window.location.origin}${window.location.pathname}`;
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+    const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
       method: "POST",
       headers: { apikey: config.anonKey, "Content-Type": "application/json" },
       body: JSON.stringify({ email, create_user: true }),
-    });
+    }, 20_000);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.msg || error.message || `HTTP ${response.status}`);
@@ -463,11 +480,11 @@ async function verifyEmailOtp(event) {
   hideAuthStatus();
 
   try {
-    const response = await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/verify`, {
+    const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/auth/v1/verify`, {
       method: "POST",
       headers: { apikey: config.anonKey, "Content-Type": "application/json" },
       body: JSON.stringify({ email: pendingAuthEmail, token, type: "email" }),
-    });
+    }, 20_000);
     const value = await response.json().catch(() => ({}));
     if (!response.ok || !value.access_token || !value.refresh_token) {
       throw new Error(value.msg || value.message || `HTTP ${response.status}`);
@@ -545,10 +562,10 @@ async function signOut() {
   elements.signOut.disabled = true;
   try {
     if (token) {
-      await fetch(`${config.url.replace(/\/$/, "")}/auth/v1/logout`, {
+      await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/auth/v1/logout`, {
         method: "POST",
         headers: { apikey: config.anonKey, Authorization: `Bearer ${token}` },
-      });
+      }, 15_000);
     }
   } catch (error) {
     console.warn("[auth] remote sign-out failed", error);
@@ -561,6 +578,45 @@ async function signOut() {
     updateAccountUI();
     closeAuthModal();
     showToast("已退出登录，仍可继续浏览和使用本地收藏。");
+  }
+}
+
+async function deleteAccount() {
+  if (!authSession?.access_token) return;
+  const confirmed = window.confirm("确定永久删除账号吗？你的收藏、评价、社区帖子和已上传照片都会被删除，且无法恢复。");
+  if (!confirmed) return;
+  const config = window.SUPABASE_CONFIG || {};
+  elements.deleteAccount.disabled = true;
+  elements.deleteAccount.textContent = "正在删除…";
+  hideAuthStatus();
+  try {
+    await refreshAuthSessionIfNeeded();
+    if (!authSession?.access_token) throw new Error("SESSION_EXPIRED");
+    const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/functions/v1/delete-account`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: "DELETE_MY_ACCOUNT" }),
+    }, 45_000);
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(value.code || `HTTP_${response.status}`);
+    authSession = null;
+    persistAuthSession();
+    localStorage.removeItem(FAVORITES_KEY);
+    favoriteIds = new Set();
+    localReviews = [];
+    localStorage.removeItem(REVIEWS_KEY);
+    cloudReviewCache.clear();
+    updateAccountUI();
+    closeAuthModal();
+    render();
+    showToast("账号和已发布内容已删除。");
+  } catch (error) {
+    const expired = String(error.message || "").includes("SESSION");
+    showAuthStatus(expired ? "登录状态已失效，请重新登录后再试。" : "账号暂时无法删除，请稍后再试。账号仍然保留。");
+    console.error("[auth] account deletion failed", error);
+  } finally {
+    elements.deleteAccount.disabled = false;
+    elements.deleteAccount.textContent = "删除账号和内容";
   }
 }
 
@@ -595,8 +651,8 @@ async function loadFoodItems() {
   const canonicalEndpoint = `${baseUrl}/rest/v1/places?select=id,legacy_food_place_id&legacy_food_place_id=not.is.null`;
   try {
     const [response, canonicalResponse] = await Promise.all([
-      fetch(endpoint, { headers: supabaseHeaders() }),
-      fetch(canonicalEndpoint, { headers: supabaseHeaders() }),
+      fetchWithTimeout(endpoint, { headers: supabaseHeaders() }),
+      fetchWithTimeout(canonicalEndpoint, { headers: supabaseHeaders() }),
     ]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const rows = await response.json();
@@ -630,7 +686,7 @@ async function loadCatalogItems() {
   const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${CATALOG_VIEW}?select=${fields}&channel=in.(beauty,life,fashion)&limit=1000`;
 
   try {
-    const response = await fetch(endpoint, { headers: supabaseHeaders() });
+    const response = await fetchWithTimeout(endpoint, { headers: supabaseHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const rows = await response.json();
     cloudCatalogItems = { beauty: [], life: [], fashion: [] };
@@ -728,6 +784,7 @@ function switchChannel(channel) {
   favoritesOnly = false;
   document.body.dataset.channel = channel;
   elements.search.value = "";
+  if (typeof window.syncBanfanSiteSearch === "function") window.syncBanfanSiteSearch("");
   searchActive = false;
   elements.favorites.textContent = "收藏";
   elements.favorites.setAttribute("aria-pressed", "false");
@@ -817,8 +874,8 @@ function render() {
   if (searchingAll) {
     elements.eyebrow.textContent = "全站搜索 · SEARCH";
     elements.title.textContent = `“${query}”`;
-    elements.description.textContent = "同时搜索美食、美妆、生活与潮流的全部品目。";
-    elements.syncStatus.textContent = "四个频道 · 按评价数排序";
+    elements.description.textContent = "同时搜索美食、美妆、生活、潮流与社区图文。";
+    elements.syncStatus.textContent = "四个频道与社区 · 品目按评价数排序";
   } else {
     const config = channelCatalog[currentChannel];
     elements.eyebrow.textContent = config.eyebrow;
@@ -937,33 +994,25 @@ function syncFoodViewVisibility() {
 
 async function loadFoodMap() {
   if (map) {
-    setTimeout(() => {
-      if (mapProvider === "kakao") map.relayout();
-      else if (typeof map.resize === "function") map.resize();
-    }, 0);
+    setTimeout(() => map.relayout(), 0);
     drawFoodMarkers();
     return;
   }
   elements.mapStatus.textContent = "正在加载韩国地图...";
   elements.startAddPlace.disabled = true;
   try {
-    const provider = await ensureMapProvider();
-    if (!provider) throw new Error("地图服务未加载");
-    mapProvider = provider.name;
-    mapSdk = provider.sdk;
+    kakaoSdk = await ensureMapProvider();
+    if (!kakaoSdk) throw new Error("地图服务未加载");
     document.querySelector("#map").replaceChildren();
-    if (mapProvider === "tencent") initializeTencentMap();
-    else initializeKakaoMap();
+    initializeKakaoMap();
     elements.startAddPlace.disabled = false;
     elements.startAddPlace.textContent = "添加新地点";
-    elements.mapStatus.textContent = mapProvider === "tencent"
-      ? "腾讯地图 · 面向中国访问"
-      : "韩国地图临时后备 · 腾讯地图配置中";
+    elements.mapStatus.textContent = "Kakao 韩国地图";
     drawFoodMarkers();
   } catch (error) {
     mapProviderLoadPromise = null;
-    elements.startAddPlace.disabled = true;
-    elements.startAddPlace.textContent = "底图恢复后可添加";
+    elements.startAddPlace.disabled = false;
+    elements.startAddPlace.textContent = "重新加载地图";
     elements.mapStatus.textContent = "底图暂时不可用 · 地点列表仍可浏览";
     renderMapFallback();
     console.warn("[map] provider unavailable", error);
@@ -980,8 +1029,13 @@ function renderMapFallback() {
   const title = document.createElement("strong");
   title.textContent = "地图底图暂时没有加载出来";
   const description = document.createElement("p");
-  description.textContent = "地点数据仍然完整。先从下面打开餐厅详情；底图恢复后会自动重新提供定位与新增地点。";
-  copy.append(title, description);
+  description.textContent = "地点数据仍然完整。你可以继续查看高人气餐厅，或切回榜单浏览全部地点。";
+  const listButton = document.createElement("button");
+  listButton.type = "button";
+  listButton.className = "secondary-button";
+  listButton.textContent = "查看全部地点榜单";
+  listButton.addEventListener("click", () => showFoodView("list"));
+  copy.append(title, description, listButton);
 
   const list = document.createElement("div");
   list.className = "map-fallback-list";
@@ -1008,56 +1062,37 @@ function renderMapFallback() {
 
 async function ensureMapProvider() {
   if (mapProviderLoadPromise) return mapProviderLoadPromise;
-  mapProviderLoadPromise = (async () => {
-    const tencent = await ensureTencentSdk();
-    if (tencent) return { name: "tencent", sdk: tencent };
-    const kakao = await ensureKakaoSdk();
-    if (kakao) return { name: "kakao", sdk: kakao };
-    return null;
-  })();
+  mapProviderLoadPromise = ensureKakaoSdk();
   return mapProviderLoadPromise;
-}
-
-function ensureTencentSdk() {
-  if (!window.TENCENT_MAP_KEY) return Promise.resolve(null);
-  if (window.TMap) return Promise.resolve(window.TMap);
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(window.TENCENT_MAP_KEY)}`;
-    script.onload = () => resolve(window.TMap || null);
-    script.onerror = () => resolve(null);
-    document.head.append(script);
-  });
 }
 
 function ensureKakaoSdk() {
   if (!window.KAKAO_JS_KEY) return Promise.resolve(null);
-  if (window.kakao?.maps) return new Promise((resolve) => window.kakao.maps.load(() => resolve(window.kakao)));
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(value);
+    };
+    const timeout = window.setTimeout(() => finish(null), 12_000);
+    if (window.kakao?.maps) {
+      window.kakao.maps.load(() => finish(window.kakao));
+      return;
+    }
     const script = document.createElement("script");
     script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(window.KAKAO_JS_KEY)}&libraries=services&autoload=false`;
     script.onload = () => {
-      if (!window.kakao || !window.kakao.maps) return resolve(null);
-      window.kakao.maps.load(() => resolve(window.kakao));
+      if (!window.kakao?.maps) return finish(null);
+      window.kakao.maps.load(() => finish(window.kakao));
     };
-    script.onerror = () => resolve(null);
+    script.onerror = () => finish(null);
     document.head.append(script);
   });
 }
 
-function initializeTencentMap() {
-  map = new mapSdk.Map(document.querySelector("#map"), {
-    center: new mapSdk.LatLng(37.5665, 126.978),
-    zoom: 11,
-  });
-  map.on("click", (event) => {
-    if (!addingPlace || !event.latLng) return;
-    selectPlaceCoordinates(event.latLng.getLat(), event.latLng.getLng());
-  });
-}
-
 function initializeKakaoMap() {
-  kakaoSdk = mapSdk;
   map = new kakaoSdk.maps.Map(document.querySelector("#map"), {
     center: new kakaoSdk.maps.LatLng(37.5665, 126.978),
     level: 8,
@@ -1071,16 +1106,12 @@ function initializeKakaoMap() {
 }
 
 function drawFoodMarkers() {
-  if (!map || !mapSdk) return;
+  if (!map || !kakaoSdk) return;
   mapOverlays.forEach((overlay) => overlay.setMap(null));
   mapOverlays = [];
   if (activeMapPopup) activeMapPopup.setMap(null);
   activeMapPopup = null;
   const items = cloudFoodItems.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
-  if (mapProvider === "tencent") {
-    drawTencentMarkers(items);
-    return;
-  }
   items.forEach((item) => {
     const pin = document.createElement("button");
     pin.type = "button";
@@ -1102,56 +1133,9 @@ function drawFoodMarkers() {
   });
 }
 
-function drawTencentMarkers(items) {
-  if (!items.length) return;
-  const marker = new mapSdk.MultiMarker({
-    id: "banfan-food-places",
-    map,
-    styles: {
-      banfan: new mapSdk.MarkerStyle({
-        width: 34,
-        height: 42,
-        anchor: { x: 17, y: 42 },
-        src: createTencentPinImage(),
-        color: "#ffffff",
-        size: 13,
-        direction: "center",
-      }),
-    },
-    geometries: items.map((item) => ({
-      id: String(item.id),
-      styleId: "banfan",
-      position: new mapSdk.LatLng(item.lat, item.lng),
-      content: item.category.slice(0, 1),
-    })),
-  });
-  marker.setStopPropagation(true);
-  marker.on("click", (event) => {
-    const item = items.find((candidate) => String(candidate.id) === String(event.geometry?.id));
-    if (item) openMapPopup(item);
-  });
-  mapOverlays.push(marker);
-}
-
-function createTencentPinImage() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 34 42"><path fill="#171717" d="M17 0C7.61 0 0 7.61 0 17c0 12.75 17 25 17 25s17-12.25 17-25C34 7.61 26.39 0 17 0Z"/><circle cx="17" cy="17" r="11" fill="#171717" stroke="#fff" stroke-width="1.5"/></svg>';
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
 function openMapPopup(item) {
-  if (!map || !mapSdk) return;
+  if (!map || !kakaoSdk) return;
   if (activeMapPopup) activeMapPopup.setMap(null);
-  if (mapProvider === "tencent") {
-    activeMapPopup = new mapSdk.InfoWindow({
-      map,
-      position: new mapSdk.LatLng(item.lat, item.lng),
-      content: `<div class="map-popup"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评"}</span></div>`,
-      enableCustom: true,
-      offset: { x: 0, y: -48 },
-      zIndex: 900,
-    });
-    return;
-  }
   const popup = document.createElement("div");
   popup.className = "map-popup";
   popup.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评"}</span>`;
@@ -1192,39 +1176,15 @@ function selectPlaceCoordinates(lat, lng) {
   selectedCoordinates = { lat, lng };
   elements.coordinateText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   if (draftOverlay) draftOverlay.setMap(null);
-  if (mapProvider === "tencent") {
-    draftOverlay = new mapSdk.MultiMarker({
-      id: "banfan-draft-place",
-      map,
-      styles: {
-        draft: new mapSdk.MarkerStyle({
-          width: 34,
-          height: 42,
-          anchor: { x: 17, y: 42 },
-          src: createTencentPinImage(),
-          color: "#ffffff",
-          size: 17,
-          direction: "center",
-        }),
-      },
-      geometries: [{
-        id: "draft",
-        styleId: "draft",
-        position: new mapSdk.LatLng(lat, lng),
-        content: "+",
-      }],
-    });
-  } else {
-    const pin = document.createElement("div");
-    pin.className = "banfan-pin";
-    pin.innerHTML = "<span>＋</span>";
-    draftOverlay = new kakaoSdk.maps.CustomOverlay({
-      position: new kakaoSdk.maps.LatLng(lat, lng),
-      content: pin,
-      xAnchor: .5,
-      yAnchor: 1,
-    });
-  }
+  const pin = document.createElement("div");
+  pin.className = "banfan-pin";
+  pin.innerHTML = "<span>＋</span>";
+  draftOverlay = new kakaoSdk.maps.CustomOverlay({
+    position: new kakaoSdk.maps.LatLng(lat, lng),
+    content: pin,
+    xAnchor: .5,
+    yAnchor: 1,
+  });
   draftOverlay.setMap(map);
   elements.placeName.focus();
 }

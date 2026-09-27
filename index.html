@@ -5,12 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#eef2f5" />
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="zh_CN" />
+  <meta property="og:site_name" content="伴饭" />
+  <meta property="og:title" content="伴饭 · 来韩国照着选" />
+  <meta property="og:description" content="给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流指南。" />
+  <meta property="og:url" content="https://banfantujian.com/" />
+  <meta name="twitter:card" content="summary" />
   <title>伴饭 · 来韩国照着选</title>
+  <link rel="canonical" href="https://banfantujian.com/" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./tokens.css?v=20260927h" />
   <link rel="stylesheet" href="./redesign.css?v=20260927o" />
   <link rel="stylesheet" href="./community.css?v=20260927a" />
 </head>
 <body data-channel="food">
+  <a class="skip-link" id="skipLink" href="#discoverView">跳到主要内容</a>
   <header class="site-header">
     <div class="site-header-inner">
       <a class="brand" href="./" aria-label="伴饭首页">
@@ -24,7 +35,7 @@
       </nav>
       <label class="global-search" for="searchInput">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
-        <input id="searchInput" type="search" aria-label="全站搜索商品、品牌或餐厅" placeholder="全站搜索商品、品牌或餐厅" autocomplete="off" />
+        <input id="searchInput" type="search" aria-label="全站搜索商品、品牌、餐厅或帖子" placeholder="全站搜索商品、品牌、餐厅或帖子" autocomplete="off" />
       </label>
       <div class="header-actions">
         <button id="openFavoritesButton" class="text-button" type="button" aria-pressed="false">收藏</button>
@@ -34,7 +45,7 @@
     </div>
   </header>
 
-  <main class="catalog-shell" id="discoverView" data-view-panel="discover">
+  <main class="catalog-shell" id="discoverView" data-view-panel="discover" tabindex="-1">
     <nav class="category-launcher" aria-label="四大频道">
       <button class="category-entry is-active" type="button" data-channel="food" aria-current="page">
         <span class="entry-copy"><strong>美食</strong><small>餐厅 · 零食 · 饮料</small></span><span class="entry-en">FOOD</span>
@@ -124,6 +135,10 @@
       <div class="catalog-more" id="catalogMore" hidden>
         <button id="loadMoreButton" type="button">继续加载</button>
       </div>
+      <section class="site-search-community" id="siteSearchCommunity" hidden aria-live="polite">
+        <header><h3>社区图文</h3><span id="siteSearchCommunityCount"></span></header>
+        <div id="siteSearchCommunityResults"></div>
+      </section>
       <div class="catalog-empty" id="catalogEmpty" hidden>
         <strong id="emptyTitle">这个分类的品目还没导入。</strong>
         <span id="emptyDescription">品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
@@ -135,7 +150,7 @@
     </section>
   </main>
 
-  <main class="community-shell" id="communityView" data-view-panel="community" hidden>
+  <main class="community-shell" id="communityView" data-view-panel="community" tabindex="-1" hidden>
     <header class="community-intro">
       <div>
         <p>不必先找到品目，也可以分享。</p>
@@ -161,7 +176,7 @@
     </div>
   </main>
 
-  <main class="ask-shell" id="askView" data-view-panel="ask" hidden>
+  <main class="ask-shell" id="askView" data-view-panel="ask" tabindex="-1" hidden>
     <section class="ask-hero">
       <div class="ask-heading">
         <p>答案来自伴饭现有的商品、地点、评价和帖子。</p>
@@ -193,10 +208,10 @@
   </main>
 
   <nav class="mobile-app-nav" aria-label="移动端主要页面">
-    <button class="is-active" type="button" data-app-view="discover" aria-current="page"><span aria-hidden="true">⌂</span>发现</button>
-    <button type="button" data-app-view="community"><span aria-hidden="true">▦</span>社区</button>
-    <button type="button" data-app-view="ask"><span aria-hidden="true">?</span>问一问</button>
-    <button id="mobileReviewButton" type="button"><span aria-hidden="true">＋</span><span id="mobilePublishLabel">写评价</span></button>
+    <button class="is-active" type="button" data-app-view="discover" aria-current="page"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z" /></svg>发现</button>
+    <button type="button" data-app-view="community"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h7v6H4Zm9 0h7v6h-7ZM4 13h7v6H4Zm9 0h7v6h-7Z" /></svg>社区</button>
+    <button type="button" data-app-view="ask"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 3Zm4 4a3 3 0 0 1 6 0c0 2-3 2-3 4m0 1.5v.5" /></svg>问一问</button>
+    <button id="mobileReviewButton" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span id="mobilePublishLabel">写评价</span></button>
   </nav>
 
   <div class="auth-modal" id="authModal" hidden>
@@ -223,7 +238,7 @@
             <input id="authEmail" type="email" autocomplete="email" required placeholder="name@example.com" />
           </label>
           <button id="sendAuthLinkButton" class="primary-button" type="submit">获取验证码</button>
-          <p class="auth-legal">继续即表示同意遵守社区规则。微信登录将在开放平台资质完成后接入。</p>
+          <p class="auth-legal">继续即表示你已阅读<a href="./community-guidelines.html" target="_blank" rel="noopener">社区规则</a>和<a href="./privacy.html" target="_blank" rel="noopener">隐私说明</a>。微信登录将在开放平台资质完成后接入。</p>
         </form>
         <div id="authSent" class="auth-state" hidden>
           <div>
@@ -245,7 +260,10 @@
           <span>当前账号</span>
           <h3 id="authAccountEmail"></h3>
           <p>你已经可以发布社区图文、带图评价、补充地点，并在不同设备同步收藏。</p>
-          <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
+          <div class="account-actions">
+            <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
+            <button id="deleteAccountButton" class="danger-button" type="button">删除账号和内容</button>
+          </div>
         </div>
         <p id="authStatus" class="auth-status" role="status" hidden></p>
       </div>
@@ -375,7 +393,7 @@
 
   <footer class="site-footer">
     <div class="footer-brand"><strong>BANFAN</strong><span>伴你在韩国，选到真正适合自己的。</span></div>
-    <div class="footer-meta"><span>美食 · 美妆 · 生活 · 潮流</span><span>banfantujian.com</span><span>© 2026</span></div>
+    <div class="footer-meta"><span>美食 · 美妆 · 生活 · 潮流</span><span class="footer-links"><a href="./privacy.html">隐私说明</a><a href="./community-guidelines.html">社区规则</a></span><span>banfantujian.com · © 2026</span></div>
   </footer>
 
   <div class="toast" id="toast" role="status" hidden></div>
@@ -397,8 +415,8 @@
     </article>
   </template>
 
-  <script src="./config.js?v=20260927l"></script>
-  <script src="./app.js?v=20260927q"></script>
-  <script src="./community.js?v=20260927a"></script>
+  <script src="./config.js?v=20260927m"></script>
+  <script src="./app.js?v=20260927r"></script>
+  <script src="./community.js?v=20260927b"></script>
 </body>
 </html>
