@@ -1,0 +1,24 @@
+{
+  "scope": "single-page application surface",
+  "framework": "static HTML, CSS and JavaScript",
+  "existingDesignSystem": false,
+  "existingFontStrategy": "system sans with a serif display layer",
+  "existingPalette": ["warm off-white", "black", "red accent", "beige partnership panels"],
+  "existingMotionLibrary": false,
+  "existingMacrostructure": "Specimen-like split hero with numbered category cards",
+  "painPoints": [
+    "numbered equal-width channel cards",
+    "decorative English eyebrow labels",
+    "generic editorial serif treatment",
+    "brand-partnership placeholders read as empty boxes",
+    "navigation duplicates channel selection"
+  ],
+  "preserve": [
+    "four-channel browsing",
+    "search, filters, sorting and favorites",
+    "food list and map modes",
+    "product details and mandatory-photo reviews",
+    "Supabase-backed catalogue",
+    "clearly labelled advertising inventory"
+  ]
+}

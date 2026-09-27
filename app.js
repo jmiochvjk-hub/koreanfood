@@ -6,29 +6,29 @@ const PAGE_SIZE = 24;
 
 const channelCatalog = {
   food: {
-    eyebrow: "FOOD / 美食",
-    title: "韩国美食品目",
+    eyebrow: "美食 · FOOD",
+    title: "在韩国，今天吃什么",
     description: "先看已有品目，再决定吃什么、买什么、去哪里。",
     filters: ["全部", "韩餐", "烤肉", "街头小吃", "咖啡甜品", "海鲜"],
     glyph: "食",
   },
   beauty: {
-    eyebrow: "BEAUTY / 美妆",
-    title: "韩国美妆品目",
+    eyebrow: "美妆 · BEAUTY",
+    title: "值得带走的韩国美妆",
     description: "按肤质、功效和预算浏览，不再面对一整面热销墙盲买。",
     filters: ["全部", "Olive Young", "护肤", "彩妆", "防晒", "发护"],
     glyph: "妆",
   },
   life: {
-    eyebrow: "LIFE / 生活",
-    title: "韩国生活品目",
+    eyebrow: "生活 · LIFE",
+    title: "旅行和生活都用得上",
     description: "Daiso、便利店、家居与文具，旅行和长期生活都能查。",
     filters: ["全部", "Daiso", "便利店", "家居", "文具"],
     glyph: "物",
   },
   fashion: {
-    eyebrow: "FASHION / 潮流",
-    title: "韩国潮流品目",
+    eyebrow: "潮流 · FASHION",
+    title: "从品牌开始认识韩国风格",
     description: "用风格、预算和使用场景筛选品牌与单品。",
     filters: ["全部", "韩国品牌", "基础款", "鞋包", "配饰"],
     glyph: "潮",
@@ -86,6 +86,8 @@ const elements = {
   cancelAddPlace: document.querySelector("#cancelAddPlaceButton"),
   grid: document.querySelector("#catalogGrid"),
   empty: document.querySelector("#catalogEmpty"),
+  emptyTitle: document.querySelector("#emptyTitle"),
+  emptyDescription: document.querySelector("#emptyDescription"),
   more: document.querySelector("#catalogMore"),
   loadMore: document.querySelector("#loadMoreButton"),
   template: document.querySelector("#catalogCardTemplate"),
@@ -119,6 +121,7 @@ const elements = {
   detailReviewSummary: document.querySelector("#detailReviewSummary"),
   detailReviewList: document.querySelector("#detailReviewList"),
   toast: document.querySelector("#toast"),
+  heroSlots: document.querySelectorAll("[data-hero-slot]"),
 };
 
 let currentChannel = "food";
@@ -132,6 +135,7 @@ let selectedItemId = null;
 let toastTimer = null;
 let photoObjectUrls = [];
 let detailItem = null;
+let lastFocusedElement = null;
 let foodView = "list";
 let map = null;
 let kakaoSdk = null;
@@ -194,19 +198,25 @@ elements.detailReview.addEventListener("click", () => {
 });
 elements.photo.addEventListener("change", previewPhoto);
 elements.missingItem.addEventListener("click", () => {
-  showToast("缺少品目会进入平台审核队列，不会直接创建重复条目。");
+  showToast("品目补充功能会随账号与审核系统一起开放。");
 });
 elements.form.addEventListener("submit", saveReview);
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  if (!elements.modal.hidden) closeReviewModal();
-  else if (!elements.detailModal.hidden) closeDetailModal();
+  const activeModal = !elements.modal.hidden ? elements.modal : (!elements.detailModal.hidden ? elements.detailModal : null);
+  if (!activeModal) return;
+  if (event.key === "Escape") {
+    if (activeModal === elements.modal) closeReviewModal();
+    else closeDetailModal();
+    return;
+  }
+  if (event.key === "Tab") trapModalFocus(event, activeModal);
 });
 
 async function init() {
   renderFilters();
   render();
   await Promise.all([loadFoodItems(), loadCatalogItems()]);
+  hydrateHeroShowcase();
   render();
 }
 
@@ -268,6 +278,28 @@ async function loadCatalogItems() {
   }
 }
 
+function hydrateHeroShowcase() {
+  const featured = (cloudCatalogItems.beauty || []).filter((item) => item.imageUrl).slice(0, elements.heroSlots.length);
+  elements.heroSlots.forEach((slot, index) => {
+    const item = featured[index];
+    if (!item) return;
+    const image = slot.querySelector(".hero-product-image");
+    const placeholder = slot.querySelector(".lookbook-placeholder");
+    const title = slot.querySelector(".hero-product-title");
+    const meta = slot.querySelector(".hero-product-meta");
+    image.src = item.imageUrl;
+    image.alt = `${item.title} 官方商品图`;
+    image.hidden = false;
+    placeholder.hidden = true;
+    title.textContent = item.title;
+    meta.textContent = `${item.brand}${item.price ? ` · ₩${item.price.toLocaleString("ko-KR")}` : ""}`;
+    image.addEventListener("error", () => {
+      image.hidden = true;
+      placeholder.hidden = false;
+    }, { once: true });
+  });
+}
+
 function mapCatalogItem(item) {
   const attributes = item.attributes && typeof item.attributes === "object" ? item.attributes : {};
   const brand = item.brand_name_zh || item.brand_name_ko || "品牌待补";
@@ -294,13 +326,14 @@ function mapCatalogItem(item) {
 }
 
 function mapFoodPlace(place) {
+  const rawPrice = Number(place.price || 0);
   return {
     id: String(place.id),
     title: place.name || "未命名品目",
     category: place.category || "美食",
     note: place.note || place.dish || "等待第一条真实体验。",
     brand: place.category || "韩国美食",
-    price: Number(place.price || 0),
+    price: rawPrice > 0 && rawPrice < 1000 ? rawPrice * 1000 : rawPrice,
     glyph: (place.category || "食").slice(0, 1),
     rating: Number(place.rating || 0),
     reviewCount: Math.max(0, Number(place.submission_count || 0)),
@@ -395,6 +428,13 @@ function render() {
   elements.count.textContent = items.length;
   elements.grid.innerHTML = "";
   elements.empty.hidden = items.length > 0;
+  if (!items.length) {
+    const hasQuery = Boolean(elements.search.value.trim()) || activeFilter !== "全部" || favoritesOnly;
+    elements.emptyTitle.textContent = hasQuery ? "没有符合条件的品目" : "这个分类的品目还没导入";
+    elements.emptyDescription.textContent = hasQuery
+      ? "换个关键词或筛选条件再试一次。"
+      : "品目由平台批量导入，接入数据源后会直接出现在这里。";
+  }
   const visibleItems = items.slice(0, visibleLimit);
 
   visibleItems.forEach((item, index) => {
@@ -414,16 +454,16 @@ function render() {
       }, { once: true });
     }
     card.dataset.kind = item.kind;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `查看 ${item.title} 详情`);
-    card.querySelector(".card-category").textContent = item.category.toUpperCase();
+    const openButton = card.querySelector(".card-open");
+    openButton.setAttribute("aria-label", `查看 ${item.title} 详情`);
+    card.querySelector(".card-category").textContent = item.kind === "product" ? item.brand : item.category;
     card.querySelector(".card-title").textContent = item.title;
     const originalName = card.querySelector(".card-original");
     if (item.originalName) {
       originalName.textContent = item.originalName;
       originalName.hidden = false;
     }
-    card.querySelector(".card-note").textContent = item.note;
+    card.querySelector(".card-note").textContent = item.price ? `₩${item.price.toLocaleString("ko-KR")}` : item.note;
     card.querySelector(".card-rating").textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
     card.querySelector(".card-reviews").textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "0 条体验";
 
@@ -435,15 +475,9 @@ function render() {
       toggleFavorite(item.id);
     });
     if (item.kind === "shelf") {
-      card.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
+      openButton.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
     } else {
-      card.addEventListener("click", () => openDetailModal(item));
-      card.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openDetailModal(item);
-        }
-      });
+      openButton.addEventListener("click", () => openDetailModal(item));
     }
     elements.grid.append(card);
     if (index === 7 && currentChannel !== "food") elements.grid.append(createFeedAd());
@@ -672,22 +706,22 @@ function createFeedAd() {
   ad.className = "catalog-ad ad-slot";
   ad.dataset.adPlacement = `${currentChannel}-feed`;
   ad.innerHTML = `
-    <span class="ad-label">SPONSORED · 品牌合作</span>
-    <div><strong>新品和品牌故事</strong><p>以后每 8–12 件商品最多出现一个，并始终明确标注。</p></div>
+    <span class="ad-label">品牌合作</span>
+    <div><strong>新品和品牌故事</strong><p>合作内容与普通选品分开，并始终明确标注。</p></div>
     <small>合作位暂未开放</small>`;
   return ad;
 }
 
 function openDetailModal(item) {
   detailItem = item;
-  elements.detailCategory.textContent = `${channelCatalog[item.channel || currentChannel]?.eyebrow || "BANFAN"} · ${item.category}`;
+  elements.detailCategory.textContent = `${item.brand || item.category} · ${item.category}`;
   elements.detailTitle.textContent = item.title;
   elements.detailOriginal.textContent = item.originalName || "";
   elements.detailOriginal.hidden = !item.originalName;
   elements.detailNote.textContent = item.note;
   elements.detailRating.textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
   elements.detailReviewCount.textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "还没有评价";
-  elements.detailImage.src = item.imageUrl || "";
+  elements.detailImage.src = item.imageUrl || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
   elements.detailImage.alt = item.imageUrl ? `${item.title} 官方商品图` : "";
   elements.detailImage.parentElement.classList.toggle("has-image", Boolean(item.imageUrl));
   elements.detailImage.hidden = !item.imageUrl;
@@ -695,13 +729,11 @@ function openDetailModal(item) {
   elements.detailSource.hidden = !item.sourceUrl;
   syncDetailFavorite();
   renderDetailReviews(item);
-  elements.detailModal.hidden = false;
-  document.body.classList.add("modal-open");
+  activateModal(elements.detailModal, elements.closeDetail);
 }
 
 function closeDetailModal() {
-  elements.detailModal.hidden = true;
-  document.body.classList.remove("modal-open");
+  deactivateModal(elements.detailModal);
   detailItem = null;
 }
 
@@ -723,7 +755,8 @@ function renderDetailReviews(item) {
     <article class="detail-review-card">
       <div><strong>★ ${Number(review.rating).toFixed(1)}</strong><span>${formatDate(review.createdAt)}</span></div>
       <p>${escapeHtml(review.text)}</p>
-      <small>${review.hasPhoto ? "已提交实拍照片 · 云端上传接入后显示" : "无照片"}</small>
+      ${review.photos?.length ? `<div class="review-photo-grid">${review.photos.map((photo, index) => `<img src="${photo}" alt="评价实拍 ${index + 1}" loading="lazy" />`).join("")}</div>` : ""}
+      <small>${review.photos?.length ? `${review.photoCount || review.photos.length} 张实拍 · 当前设备` : "照片将在云端存储接入后显示"}</small>
     </article>`).join("");
 }
 
@@ -740,26 +773,23 @@ function openReviewModal(item = null) {
   }
   selectedItemId = item ? item.id : null;
   elements.itemInput.value = item ? item.title : "";
-  elements.modal.hidden = false;
-  document.body.classList.add("modal-open");
-  setTimeout(() => elements.itemInput.focus(), 0);
+  activateModal(elements.modal, elements.itemInput);
 }
 
 function closeReviewModal() {
-  elements.modal.hidden = true;
-  document.body.classList.remove("modal-open");
+  deactivateModal(elements.modal);
   selectedItemId = null;
   clearPhotoPreview();
   elements.form.reset();
   elements.rating.value = "5";
 }
 
-function saveReview(event) {
+async function saveReview(event) {
   event.preventDefault();
   const title = elements.itemInput.value.trim();
   const item = allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
   if (!item) {
-    showToast("请从已有品目中选择；搜不到时提交“缺少品目”。");
+    showToast("请从已有品目中选择；品目补充功能将在账号系统接入后开放。");
     elements.itemInput.focus();
     return;
   }
@@ -768,19 +798,92 @@ function saveReview(event) {
     elements.photo.focus();
     return;
   }
+  const files = [...elements.photo.files];
+  let photos;
+  try {
+    photos = await Promise.all(files.slice(0, 6).map(createReviewThumbnail));
+  } catch (error) {
+    showToast("照片处理失败，请换一张后重试。");
+    console.error("[review] photo processing failed", error);
+    return;
+  }
   localReviews.unshift({
     id: crypto.randomUUID(),
     itemId: item.id,
     rating: Number(elements.rating.value),
     text: elements.reviewText.value.trim(),
     hasPhoto: true,
-    photoCount: Math.min(elements.photo.files.length, 6),
+    photoCount: Math.min(files.length, 6),
+    photos,
     createdAt: new Date().toISOString(),
   });
-  localStorage.setItem(REVIEWS_KEY, JSON.stringify(localReviews));
+  try {
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(localReviews));
+  } catch (error) {
+    localReviews.shift();
+    showToast("照片占用空间过大，请减少数量后重试。");
+    console.error("[review] local storage failed", error);
+    return;
+  }
   closeReviewModal();
   render();
   showToast("评价已保存到当前设备；账号和云端同步将在后端改造后接入。");
+}
+
+function createReviewThumbnail(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("照片读取失败"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("照片解析失败"));
+      image.onload = () => {
+        const maxSide = 520;
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.68));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function activateModal(modal, focusTarget) {
+  lastFocusedElement = document.activeElement;
+  [...document.body.children].forEach((child) => {
+    if (child !== modal) child.setAttribute("inert", "");
+    else child.removeAttribute("inert");
+  });
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+  setTimeout(() => focusTarget.focus(), 0);
+}
+
+function deactivateModal(modal) {
+  modal.hidden = true;
+  [...document.body.children].forEach((child) => child.removeAttribute("inert"));
+  document.body.classList.remove("modal-open");
+  if (lastFocusedElement instanceof HTMLElement) lastFocusedElement.focus();
+  lastFocusedElement = null;
+}
+
+function trapModalFocus(event, modal) {
+  const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]')]
+    .filter((element) => !element.hidden && element.getClientRects().length);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function previewPhoto() {

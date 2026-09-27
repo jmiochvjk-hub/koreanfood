@@ -1,0 +1,46 @@
+/* BanFan · Seoul Selection system tokens */
+:root {
+  color-scheme: light;
+
+  --color-paper: oklch(96.4% 0.006 235);
+  --color-surface: oklch(99.2% 0.002 235);
+  --color-surface-muted: oklch(92.8% 0.008 235);
+  --color-ink: oklch(20.5% 0.014 250);
+  --color-ink-muted: oklch(47% 0.012 245);
+  --color-rule: oklch(83.5% 0.01 235);
+  --color-rule-strong: oklch(62% 0.01 240);
+  --color-accent: oklch(51% 0.19 28);
+  --color-accent-dark: oklch(41% 0.16 28);
+  --color-accent-ink: oklch(98.5% 0.003 235);
+  --color-on-accent: var(--color-accent-ink);
+  --color-focus: oklch(55% 0.18 255);
+
+  --font-body: "Helvetica Neue", "Pretendard", "Apple SD Gothic Neo", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-editorial: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", serif;
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4.5rem;
+  --space-3xl: 7rem;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --text-2xl: clamp(2.35rem, 5vw, 5.25rem);
+
+  --page-gutter: clamp(1rem, 4vw, 4rem);
+  --page-max: 100rem;
+  --radius-control: 0.25rem;
+  --radius-card: 0;
+  --rule-hair: 1px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 180ms;
+  --dur-medium: 360ms;
+}

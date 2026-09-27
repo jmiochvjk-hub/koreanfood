@@ -3,77 +3,83 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#eef2f5" />
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
   <title>伴饭 · 来韩国照着选</title>
-  <link rel="stylesheet" href="./styles.css?v=20260927g" />
+  <link rel="stylesheet" href="./tokens.css?v=20260927h" />
+  <link rel="stylesheet" href="./redesign.css?v=20260927h" />
 </head>
 <body data-channel="food">
   <header class="site-header">
     <div class="site-header-inner">
       <a class="brand" href="./" aria-label="伴饭首页">
-        <span class="brand-mark">伴</span>
-        <span><strong>伴饭</strong><small>BANFAN</small></span>
+        <strong>BANFAN</strong>
+        <span>伴饭</span>
       </a>
-      <nav class="top-nav" aria-label="主要频道">
-        <button class="nav-link is-active" type="button" data-channel="food">美食</button>
-        <button class="nav-link" type="button" data-channel="beauty">美妆</button>
-        <button class="nav-link" type="button" data-channel="life">生活</button>
-        <button class="nav-link" type="button" data-channel="fashion">潮流</button>
-      </nav>
       <label class="global-search" for="searchInput">
-        <span aria-hidden="true">⌕</span>
-        <input id="searchInput" type="search" placeholder="搜索商品、品牌或店铺" autocomplete="off" />
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+        <input id="searchInput" type="search" aria-label="搜索商品、品牌或店铺" placeholder="搜索商品、品牌或店铺" autocomplete="off" />
       </label>
       <div class="header-actions">
-        <button id="openFavoritesButton" class="text-button" type="button">收藏</button>
+        <button id="openFavoritesButton" class="text-button" type="button">♡ 收藏</button>
         <button id="openReviewButton" class="primary-button" type="button">写评价</button>
       </div>
     </div>
   </header>
 
   <main class="catalog-shell">
-    <section class="hero" aria-label="伴饭精选">
-      <div class="hero-feature">
-        <p class="eyebrow">BANFAN EDIT · SEOUL</p>
-        <h1>来韩国，<br />选真正值得的。</h1>
-        <p>从餐厅到美妆、生活与潮流。先看清商品和地点，再看中文用户的真实体验。</p>
-        <button class="hero-link" type="button" data-channel="beauty">查看 Olive Young 200 件精选 <span>→</span></button>
-      </div>
-      <aside class="hero-partner ad-slot" data-ad-placement="home-hero">
-        <span class="ad-label">BRAND PARTNERSHIP · 品牌合作</span>
-        <div>
-          <p>预留给韩国品牌、门店新品和城市专题。</p>
-          <strong>内容必须有用，广告必须标明。</strong>
+    <section class="hero" aria-label="伴饭首尔选品">
+      <div class="hero-copy">
+        <div class="hero-context"><span>首尔选品</span><time datetime="2026-09">2026.09</time></div>
+        <h1>来韩国，<br />照着选就好。</h1>
+        <p>餐厅、美妆、生活与潮流，先看清商品和地点，再看中文用户留下的真实体验。</p>
+        <div class="hero-actions">
+          <button class="hero-link" type="button" data-channel="beauty">看本周美妆精选</button>
+          <button class="hero-link is-muted" type="button" data-channel="food">打开美食指南</button>
         </div>
-        <small>合作位暂未开放</small>
-      </aside>
+      </div>
+      <div class="hero-lookbook" aria-label="本周精选商品">
+        <button class="lookbook-tile lookbook-main" type="button" data-channel="beauty" data-hero-slot="0">
+          <span class="lookbook-media"><img class="hero-product-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" hidden /><span class="lookbook-placeholder">OY</span></span>
+          <span class="lookbook-caption"><strong class="hero-product-title">Olive Young 编辑选</strong><small class="hero-product-meta">200 件商品已经入库</small></span>
+        </button>
+        <button class="lookbook-tile" type="button" data-channel="beauty" data-hero-slot="1">
+          <span class="lookbook-media"><img class="hero-product-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" hidden /><span class="lookbook-placeholder">01</span></span>
+          <span class="lookbook-caption"><strong class="hero-product-title">护肤</strong><small class="hero-product-meta">按需求找到产品</small></span>
+        </button>
+        <button class="lookbook-tile" type="button" data-channel="beauty" data-hero-slot="2">
+          <span class="lookbook-media"><img class="hero-product-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" hidden /><span class="lookbook-placeholder">02</span></span>
+          <span class="lookbook-caption"><strong class="hero-product-title">彩妆</strong><small class="hero-product-meta">先看商品，再看评价</small></span>
+        </button>
+      </div>
     </section>
+
+    <aside class="partner-strip ad-slot" data-ad-placement="home-hero">
+      <span class="ad-label">品牌合作</span>
+      <p>韩国品牌、新品与城市专题的合作内容会出现在这里，并始终明确标注。</p>
+      <small>合作位暂未开放</small>
+    </aside>
 
     <nav class="category-launcher" aria-label="四大频道">
       <button class="category-entry is-active" type="button" data-channel="food">
-        <span class="entry-number">01</span>
-        <span class="entry-copy"><strong>美食</strong><small>FOOD · 餐厅 / 零食 / 饮料</small></span><span class="entry-arrow">→</span>
+        <span class="entry-copy"><strong>美食</strong><small>餐厅 · 零食 · 饮料</small></span><span class="entry-en">FOOD</span>
       </button>
       <button class="category-entry" type="button" data-channel="beauty">
-        <span class="entry-number">02</span>
-        <span class="entry-copy"><strong>美妆</strong><small>BEAUTY · OY / 护肤 / 彩妆</small></span><span class="entry-arrow">→</span>
+        <span class="entry-copy"><strong>美妆</strong><small>Olive Young · 护肤 · 彩妆</small></span><span class="entry-en">BEAUTY</span>
       </button>
       <button class="category-entry" type="button" data-channel="life">
-        <span class="entry-number">03</span>
-        <span class="entry-copy"><strong>生活</strong><small>LIFE · DAISO / 便利店 / 家居</small></span><span class="entry-arrow">→</span>
+        <span class="entry-copy"><strong>生活</strong><small>Daiso · 便利店 · 家居</small></span><span class="entry-en">LIFE</span>
       </button>
       <button class="category-entry" type="button" data-channel="fashion">
-        <span class="entry-number">04</span>
-        <span class="entry-copy"><strong>潮流</strong><small>FASHION · 品牌 / 穿搭 / 街区</small></span><span class="entry-arrow">→</span>
+        <span class="entry-copy"><strong>潮流</strong><small>品牌 · 穿搭 · 街区</small></span><span class="entry-en">FASHION</span>
       </button>
     </nav>
 
     <section class="catalog-section">
       <header class="catalog-header">
         <div>
-          <p class="eyebrow" id="channelEyebrow">FOOD / 美食</p>
-          <h2 id="channelTitle">韩国美食品目</h2>
+          <p class="channel-label" id="channelEyebrow">美食 · FOOD</p>
+          <h2 id="channelTitle">在韩国，今天吃什么</h2>
           <p id="channelDescription">先看已有品目，再决定吃什么、买什么、去哪里。</p>
         </div>
         <div class="catalog-meta">
@@ -117,8 +123,8 @@
         <button id="loadMoreButton" type="button">继续加载</button>
       </div>
       <div class="catalog-empty" id="catalogEmpty" hidden>
-        <strong>这个分类的品目还没导入。</strong>
-        <span>品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
+        <strong id="emptyTitle">这个分类的品目还没导入。</strong>
+        <span id="emptyDescription">品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
       </div>
     </section>
   </main>
@@ -129,7 +135,7 @@
     <button class="modal-backdrop" id="modalBackdrop" type="button" aria-label="关闭评价"></button>
     <section class="review-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
       <header class="review-header">
-        <div><p class="eyebrow">ADD YOUR EXPERIENCE</p><h2 id="reviewTitle">晒图评价</h2></div>
+        <div><p class="dialog-context">照片必填 · 评价绑定已有品目</p><h2 id="reviewTitle">晒图评价</h2></div>
         <button id="closeReviewButton" class="close-button" type="button" aria-label="关闭">×</button>
       </header>
       <ol class="review-steps" aria-label="评价步骤">
@@ -158,9 +164,9 @@
         <label>真实体验
           <textarea id="reviewText" required minlength="10" rows="4" maxlength="500" placeholder="至少 10 个字：口味 / 肤感 / 耐用度 / 尺码……"></textarea>
         </label>
-        <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；搜不到时提交“缺少品目”，由平台审核并入库。美食地点可在 FOOD 地图新增。</p>
+        <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；缺少品目的收集与审核功能将在账号系统接入后开放。美食地点可在 FOOD 地图新增。</p>
         <div class="form-actions">
-          <button id="missingItemButton" class="quiet-button" type="button">找不到这个品目</button>
+          <button id="missingItemButton" class="quiet-button" type="button">品目补充功能准备中</button>
           <button class="submit-review" type="submit">发布评价</button>
         </div>
       </form>
@@ -172,9 +178,9 @@
     <article class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
       <button id="closeDetailButton" class="close-button detail-close" type="button" aria-label="关闭">×</button>
       <div class="detail-product">
-        <div class="detail-media"><img id="detailImage" alt="" /></div>
+        <div class="detail-media"><img id="detailImage" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" /></div>
         <div class="detail-copy">
-          <p class="eyebrow" id="detailCategory"></p>
+          <p class="channel-label" id="detailCategory"></p>
           <h2 id="detailTitle"></h2>
           <p class="detail-original" id="detailOriginal"></p>
           <p class="detail-note" id="detailNote"></p>
@@ -187,7 +193,7 @@
         </div>
       </div>
       <section class="detail-reviews">
-        <header><div><p class="eyebrow">REAL EXPERIENCES</p><h3>真实带图评价</h3></div><span id="detailReviewSummary"></span></header>
+        <header><h3>真实带图评价</h3><span id="detailReviewSummary"></span></header>
         <div id="detailReviewList" class="detail-review-list"></div>
       </section>
       <aside class="detail-ad ad-slot" data-ad-placement="product-detail">
@@ -197,12 +203,17 @@
     </article>
   </div>
 
+  <footer class="site-footer">
+    <div class="footer-brand"><strong>BANFAN</strong><span>伴你在韩国，选到真正适合自己的。</span></div>
+    <div class="footer-meta"><span>美食 · 美妆 · 生活 · 潮流</span><span>banfantujian.com</span><span>© 2026</span></div>
+  </footer>
+
   <div class="toast" id="toast" role="status" hidden></div>
 
   <template id="catalogCardTemplate">
-    <article class="catalog-card" tabindex="0">
+    <article class="catalog-card">
       <div class="card-visual">
-        <img class="card-image" alt="" loading="lazy" decoding="async" hidden>
+        <img class="card-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" loading="lazy" decoding="async" hidden>
         <span class="card-index"></span><span class="card-glyph"></span>
       </div>
       <div class="card-body">
@@ -212,11 +223,12 @@
         <p class="card-note"></p>
         <div class="card-meta"><span class="card-rating"></span><span class="card-reviews"></span></div>
       </div>
+      <button class="card-open" type="button" aria-label="查看详情"></button>
       <button class="card-favorite" type="button" aria-label="收藏">♡</button>
     </article>
   </template>
 
-  <script src="./config.js?v=20260927g"></script>
-  <script src="./app.js?v=20260927g"></script>
+  <script src="./config.js?v=20260927h"></script>
+  <script src="./app.js?v=20260927h"></script>
 </body>
 </html>
