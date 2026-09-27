@@ -204,7 +204,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .catalog-card {
   position: relative;
   display: grid;
-  grid-template-rows: 190px 1fr auto;
+  grid-template-rows: auto 1fr auto;
   min-width: 0;
   border: 2px solid var(--line);
   background: var(--white);
@@ -215,15 +215,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   position: relative;
   display: grid;
   place-items: center;
+  aspect-ratio: 1;
   border-bottom: 2px solid var(--line);
   color: #fff;
   background:
     linear-gradient(140deg, var(--accent) 0 50%, color-mix(in srgb, var(--accent) 70%, #fff) 50% 65%, var(--yellow) 65%);
   overflow: hidden;
 }
-.card-visual.has-image { background-position: center; background-size: cover; }
+.card-visual.has-image { background: #f8f7f3; }
 .card-visual.has-image .card-glyph { display: none; }
-.card-index { position: absolute; top: 12px; left: 13px; color: var(--ink); font-family: Georgia, serif; font-size: 13px; font-style: italic; font-weight: 900; }
+.card-image { width: 100%; height: 100%; padding: 10px; object-fit: contain; object-position: center; background: #fff; }
+.card-index { position: absolute; z-index: 1; top: 10px; left: 10px; min-width: 29px; border: 1.5px solid var(--line); padding: 4px 6px; color: var(--ink); background: rgba(255,255,255,.92); font-family: Georgia, serif; font-size: 11px; font-style: italic; font-weight: 900; text-align: center; }
 .card-glyph { color: var(--ink); font-family: Georgia, "Noto Serif SC", serif; font-size: 76px; font-weight: 950; opacity: .74; transform: rotate(-7deg); }
 .card-body { padding: 17px; }
 .card-category { color: var(--accent); font-size: 9px; font-weight: 950; letter-spacing: .13em; }
@@ -308,11 +310,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .add-place-copy, #placeNoteInput { grid-column: 1 / -1; }
   #savePlaceButton, #cancelAddPlaceButton { width: auto; }
   .catalog-grid { grid-template-columns: 1fr; }
-  .catalog-card { grid-template-columns: 112px 1fr; grid-template-rows: auto auto; }
-  .card-visual { grid-row: 1 / 3; min-height: 178px; border-right: 2px solid var(--line); border-bottom: 0; }
+  .catalog-card { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .card-visual { grid-column: 1; grid-row: 1; width: 100%; min-height: 0; border-right: 0; border-bottom: 2px solid var(--line); }
+  .card-image { padding: 10px; }
   .card-glyph { font-size: 55px; }
   .card-body { padding: 14px 14px 8px; }
-  .card-actions { grid-column: 2; }
+  .card-actions { grid-column: 1; }
   .mobile-review-button { position: fixed; z-index: 1500; right: 0; bottom: 0; left: 0; display: block; width: 100%; height: 58px; border: 0; border-top: 2px solid var(--line); color: #fff; background: var(--ink); box-shadow: 0 -5px 0 var(--accent); font-weight: 950; }
   .review-modal { padding: 10px; }
   .review-sheet { max-height: calc(100dvh - 20px); padding: 17px; }

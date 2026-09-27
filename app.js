@@ -366,11 +366,18 @@ function render() {
   visibleItems.forEach((item, index) => {
     const card = elements.template.content.firstElementChild.cloneNode(true);
     const visual = card.querySelector(".card-visual");
+    const image = card.querySelector(".card-image");
     card.querySelector(".card-index").textContent = String(index + 1).padStart(2, "0");
     card.querySelector(".card-glyph").textContent = item.glyph || channelCatalog[currentChannel].glyph;
     if (item.imageUrl) {
       visual.classList.add("has-image");
-      visual.style.backgroundImage = `linear-gradient(180deg, transparent, rgba(0,0,0,.25)), url("${cssUrl(item.imageUrl)}")`;
+      image.src = item.imageUrl;
+      image.alt = `${item.title} 商品图`;
+      image.hidden = false;
+      image.addEventListener("error", () => {
+        image.hidden = true;
+        visual.classList.remove("has-image");
+      }, { once: true });
     }
     card.dataset.kind = item.kind;
     card.querySelector(".card-category").textContent = item.category.toUpperCase();
@@ -710,10 +717,6 @@ function showToast(message) {
   elements.toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { elements.toast.hidden = true; }, 3200);
-}
-
-function cssUrl(value) {
-  return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
 function escapeHtml(value) {
