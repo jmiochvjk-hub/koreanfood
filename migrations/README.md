@@ -22,32 +22,32 @@ Run these files in Supabase SQL Editor in order.
 3. `20260927_02b_seed_categories.sql`
    - Adds idempotent Food, Beauty, Life, and Fashion category seeds.
 
-4. `20260927_04_import_oliveyoung_200.sql`
+4. `20260927_03_require_auth.sql`
+   - Stops anonymous place creation and removes the permissive prototype
+     policies that allowed signed-in users to edit other users' legacy places.
+
+5. `20260927_04_import_oliveyoung_200.sql`
    - Imports the reviewed Olive Young seed set from the public ranking pages.
    - Safe to rerun: products are upserted by `source + source_key`.
    - Leaves barcodes pending instead of inventing values not published by the
      retailer.
-
-5. `20260927_06_add_oliveyoung_chinese.sql`
-   - Adds Chinese-first display names for all 200 Olive Young seeds.
-   - Preserves Korean names for search and in-store identification.
-   - Marks translations as machine drafts so editors can review them later.
 
 6. `20260927_05_tighten_catalog_grants.sql`
    - Removes Supabase's broad default table grants from browser roles.
    - Re-grants only the operations used by the current application; RLS remains
      the primary authorization boundary.
 
-7. `20260927_verify.sql`
+7. `20260927_06_add_oliveyoung_chinese.sql`
+   - Adds Chinese-first display names for all 200 Olive Young seeds.
+   - Preserves Korean names for search and in-store identification.
+   - Marks translations as machine drafts so editors can review them later.
+
+8. `20260927_07_lock_published_review_photos.sql`
+   - Prevents users from replacing or deleting photos after a review has passed
+     automatic moderation and been published.
+
+9. `20260927_verify.sql`
    - Read-only checks for tables, RLS, policies, and legacy-place migration.
-
-## Later, after authentication ships
-
-8. `20260927_03_require_auth.sql`
-   - Stops anonymous place creation.
-   - Requires an authenticated owner for legacy place writes.
-   - Do not run this file until the website and mobile app both attach a
-     Supabase user session to place submissions.
 
 ## First administrator
 

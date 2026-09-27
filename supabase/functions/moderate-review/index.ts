@@ -123,7 +123,9 @@ Deno.serve(async (request) => {
   const { data: signedPhotos, error: signError } = await admin.storage
     .from(REVIEW_PHOTO_BUCKET)
     .createSignedUrls(storagePaths, 300);
-  if (signError || !signedPhotos?.length) {
+  const usableSignedPhotos = signedPhotos?.filter((photo) => photo.signedUrl) ||
+    [];
+  if (signError || usableSignedPhotos.length !== storagePaths.length) {
     return json(request, { code: "PHOTO_SIGNING_FAILED" }, 500);
   }
 
@@ -134,17 +136,15 @@ Deno.serve(async (request) => {
         String(review.body || "")
       }</review>`,
   }];
-  signedPhotos.forEach((photo) => {
-    if (photo.signedUrl) {
-      content.push({
-        type: "image_url",
-        image_url: { url: photo.signedUrl, detail: "low" },
-      });
-    }
+  usableSignedPhotos.forEach((photo) => {
+    content.push({
+      type: "image_url",
+      image_url: { url: photo.signedUrl, detail: "low" },
+    });
   });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   let moderationResponse: Response;
   try {
     moderationResponse = await fetch(
