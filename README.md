@@ -20,8 +20,8 @@
 ## 文件
 
 - `index.html`：品目发现、FOOD 地图与评价界面。
-- `styles.css`：响应式界面。
-- `app.js`：云端商品/地点读取、搜索筛选、分页、收藏、评价原型、FOOD 地图和地点新增。
+- `tokens.css` 与 `redesign.css`：设计变量和响应式界面。
+- `app.js`：云端商品/地点读取、搜索筛选、分页、收藏同步、带图评价、FOOD 地图和地点新增。
 - `config.js`：浏览器可用的 Supabase anon 配置、腾讯地图 JS key，以及迁移期间可选的 Kakao 后备 key。
 - `migrations/`：分阶段 Supabase 数据结构与 RLS 迁移。
 - `supabase-schema.sql`：仅用于旧版 `food_places` 的初始安装，不再代表完整模型。
@@ -30,13 +30,13 @@
 
 迁移顺序和执行时机见 `migrations/README.md`。
 
-暂时不要执行 `migrations/20260927_03_require_auth.sql`；等网页与 Flutter 都能
-稳定附带用户会话后再切换，否则旧客户端的地点提交会停止工作。
+网页已经要求登录后才能补充地点。部署这一版本前，应确认
+`migrations/20260927_03_require_auth.sql` 已执行，关闭旧版匿名地点写入。
 
 ## 登录配置
 
-网页已接入 Supabase 邮箱免密码登录。浏览和本地收藏无需账号；发布带图评价、
-补充美食地点时才要求登录。
+网页已接入 Supabase 邮箱验证码登录。浏览和本地收藏无需账号；登录后收藏会同步
+到账号，发布带图评价和补充美食地点时必须登录。
 
 在 Supabase Dashboard 的 Authentication → URL Configuration 中配置：
 
@@ -45,9 +45,8 @@
 - Redirect URLs：部署阶段加入 GitHub Pages 地址和
   `https://banfantujian.com/**`
 
-确认邮件登录能在网页和 Flutter 客户端完成后，再执行
-`migrations/20260927_03_require_auth.sql` 关闭匿名地点写入。评价照片与云端同步
-仍是下一阶段；当前网页评价继续保存在本机。
+评价记录和压缩后的实拍照片会写入 Supabase，并以 `pending` 状态等待审核；只有
+发布状态的评价会向其他用户展示。旧版本留在浏览器本机的评价仍会继续显示。
 
 ## 本地预览
 

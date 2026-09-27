@@ -36,34 +36,6 @@ const channelCatalog = {
   },
 };
 
-// 非美食频道先用“品目货架”建立结构，不伪造具体商品评分。
-// 后续批量导入 catalog_items 后，用同一字段替换即可。
-const catalogShelves = {
-  beauty: [
-    makeShelf("beauty-oy", "Olive Young 全品目", "Olive Young", "门店常见商品统一入库，按成分、功效和价格筛选。", "OY"),
-    makeShelf("beauty-skin", "护肤品目库", "护肤", "洁面、化妆水、精华、面霜与面膜。", "肤"),
-    makeShelf("beauty-makeup", "彩妆品目库", "彩妆", "底妆、眼妆、唇妆与工具。", "彩"),
-    makeShelf("beauty-sun", "防晒品目库", "防晒", "记录防护力、肤感、搓泥与是否适合敏感肌。", "晒"),
-    makeShelf("beauty-hair", "头皮与发护", "发护", "洗护、染烫修护与头皮护理。", "发"),
-  ],
-  life: [
-    makeShelf("life-daiso", "Daiso 全品目", "Daiso", "价格、用途、耐用度与门店库存线索。", "D"),
-    makeShelf("life-cvs", "便利店生活品目", "便利店", "旅行应急、日用品与季节限定。", "便"),
-    makeShelf("life-home", "家居与收纳", "家居", "租房入住、清洁、收纳与长期补货。", "家"),
-    makeShelf("life-stationery", "文具与手账", "文具", "纸张、笔类、贴纸与韩国限定。", "文"),
-  ],
-  fashion: [
-    makeShelf("fashion-brand", "韩国品牌索引", "韩国品牌", "按风格、价位和线下门店浏览品牌。", "牌"),
-    makeShelf("fashion-basic", "基础款品目", "基础款", "T恤、衬衫、针织与适合通勤的基础单品。", "基"),
-    makeShelf("fashion-bag", "鞋包品目", "鞋包", "记录尺码、脚感、容量和真实使用体验。", "包"),
-    makeShelf("fashion-accessory", "配饰品目", "配饰", "眼镜、帽子、首饰与季节单品。", "饰"),
-  ],
-};
-
-function makeShelf(id, title, category, note, glyph) {
-  return { id, title, category, note, glyph, rating: 0, reviewCount: 0, kind: "shelf" };
-}
-
 const elements = {
   search: document.querySelector("#searchInput"),
   channelTriggers: document.querySelectorAll("button[data-channel]"),
@@ -85,10 +57,13 @@ const elements = {
   placeNote: document.querySelector("#placeNoteInput"),
   savePlace: document.querySelector("#savePlaceButton"),
   cancelAddPlace: document.querySelector("#cancelAddPlaceButton"),
+  loading: document.querySelector("#catalogLoading"),
+  catalogSection: document.querySelector(".catalog-section"),
   grid: document.querySelector("#catalogGrid"),
   empty: document.querySelector("#catalogEmpty"),
   emptyTitle: document.querySelector("#emptyTitle"),
   emptyDescription: document.querySelector("#emptyDescription"),
+  emptyActions: document.querySelector("#emptyActions"),
   more: document.querySelector("#catalogMore"),
   loadMore: document.querySelector("#loadMoreButton"),
   template: document.querySelector("#catalogCardTemplate"),
@@ -123,6 +98,7 @@ const elements = {
   photo: document.querySelector("#reviewPhoto"),
   photoPreview: document.querySelector("#reviewPhotoPreview"),
   reviewText: document.querySelector("#reviewText"),
+  submitReview: document.querySelector("#submitReviewButton"),
   missingItem: document.querySelector("#missingItemButton"),
   detailModal: document.querySelector("#detailModal"),
   detailBackdrop: document.querySelector("#detailBackdrop"),
@@ -150,12 +126,15 @@ let authResendRemaining = 0;
 let authResendTimer = null;
 let authSending = false;
 let activeFilter = "全部";
+let foodLoading = true;
+let catalogLoading = true;
 let cloudFoodItems = [];
 let cloudCatalogItems = { beauty: [], life: [], fashion: [] };
 let favoriteIds = loadSet(FAVORITES_KEY);
 let localReviews = loadArray(REVIEWS_KEY);
+let canonicalPlaceIds = new Map();
+let cloudReviewCache = new Map();
 let favoritesOnly = false;
-let selectedItemId = null;
 let toastTimer = null;
 let photoObjectUrls = [];
 let detailItem = null;
@@ -201,7 +180,8 @@ elements.filters.addEventListener("click", (event) => {
 elements.favorites.addEventListener("click", () => {
   favoritesOnly = !favoritesOnly;
   visibleLimit = PAGE_SIZE;
-  elements.favorites.textContent = favoritesOnly ? "♥ 只看收藏" : "♡ 收藏";
+  elements.favorites.textContent = favoritesOnly ? "仅看收藏" : "收藏";
+  elements.favorites.setAttribute("aria-pressed", String(favoritesOnly));
   render();
   document.querySelector(".catalog-section").scrollIntoView({ behavior: "smooth" });
 });
@@ -226,7 +206,7 @@ elements.closeDetail.addEventListener("click", closeDetailModal);
 elements.detailBackdrop.addEventListener("click", closeDetailModal);
 elements.detailFavorite.addEventListener("click", () => {
   if (!detailItem) return;
-  toggleFavorite(detailItem.id);
+  toggleFavorite(detailItem);
   syncDetailFavorite();
 });
 elements.detailReview.addEventListener("click", () => {
@@ -237,7 +217,7 @@ elements.detailReview.addEventListener("click", () => {
 });
 elements.photo.addEventListener("change", previewPhoto);
 elements.missingItem.addEventListener("click", () => {
-  showToast("品目补充功能会随账号与审核系统一起开放。");
+  showToast("品目补充入口正在准备；商品仍由平台审核后统一入库。");
 });
 elements.form.addEventListener("submit", saveReview);
 document.addEventListener("keydown", (event) => {
@@ -261,6 +241,7 @@ async function init() {
   renderFilters();
   render();
   await Promise.all([loadFoodItems(), loadCatalogItems()]);
+  if (authSession) await loadCloudFavorites();
   hydrateHeroShowcase();
   render();
 }
@@ -487,6 +468,8 @@ async function verifyEmailOtp(event) {
     persistAuthSession();
     stopAuthResendTimer(true);
     pendingAuthEmail = "";
+    await loadCloudFavorites();
+    render();
     updateAccountUI();
     closeAuthModal();
     showToast("登录成功，可以发布真实体验了。");
@@ -559,6 +542,8 @@ async function signOut() {
   } finally {
     authSession = null;
     persistAuthSession();
+    favoriteIds = loadSet(FAVORITES_KEY);
+    cloudReviewCache.clear();
     elements.signOut.disabled = false;
     updateAccountUI();
     closeAuthModal();
@@ -587,29 +572,42 @@ async function loadFoodItems() {
   const config = window.SUPABASE_CONFIG || {};
   if (!config.url || !config.anonKey || config.url.includes("YOUR_PROJECT_REF")) {
     elements.syncStatus.textContent = "品目库尚未连接";
+    foodLoading = false;
     return;
   }
 
   elements.syncStatus.textContent = "正在读取云端品目...";
-  const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}?select=*&order=created_at.desc`;
+  const baseUrl = config.url.replace(/\/$/, "");
+  const endpoint = `${baseUrl}/rest/v1/${SUPABASE_TABLE}?select=*&order=created_at.desc`;
+  const canonicalEndpoint = `${baseUrl}/rest/v1/places?select=id,legacy_food_place_id&legacy_food_place_id=not.is.null`;
   try {
-    const response = await fetch(endpoint, {
-      headers: supabaseHeaders(),
-    });
+    const [response, canonicalResponse] = await Promise.all([
+      fetch(endpoint, { headers: supabaseHeaders() }),
+      fetch(canonicalEndpoint, { headers: supabaseHeaders() }),
+    ]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const rows = await response.json();
+    if (canonicalResponse.ok) {
+      const canonicalRows = await canonicalResponse.json();
+      canonicalPlaceIds = new Map(canonicalRows.map((row) => [String(row.legacy_food_place_id), String(row.id)]));
+    }
     cloudFoodItems = rows.map(mapFoodPlace);
     elements.syncStatus.textContent = "云端品目已连接";
     if (map) drawFoodMarkers();
   } catch (error) {
     elements.syncStatus.textContent = "云端暂时不可用";
     console.error("[catalog] load failed", error);
+  } finally {
+    foodLoading = false;
   }
 }
 
 async function loadCatalogItems() {
   const config = window.SUPABASE_CONFIG || {};
-  if (!config.url || !config.anonKey || config.url.includes("YOUR_PROJECT_REF")) return;
+  if (!config.url || !config.anonKey || config.url.includes("YOUR_PROJECT_REF")) {
+    catalogLoading = false;
+    return;
+  }
 
   const fields = [
     "id", "channel", "item_type", "name_zh", "name_ko", "name_en",
@@ -633,6 +631,8 @@ async function loadCatalogItems() {
   } catch (error) {
     console.error("[catalog] product load failed", error);
     if (currentChannel !== "food") elements.syncStatus.textContent = "商品库暂时不可用";
+  } finally {
+    catalogLoading = false;
   }
 }
 
@@ -687,6 +687,7 @@ function mapFoodPlace(place) {
   const rawPrice = Number(place.price || 0);
   return {
     id: String(place.id),
+    canonicalPlaceId: canonicalPlaceIds.get(String(place.id)) || "",
     title: place.name || "未命名品目",
     category: place.category || "美食",
     note: place.note || place.dish || "等待第一条真实体验。",
@@ -710,9 +711,15 @@ function switchChannel(channel) {
   favoritesOnly = false;
   document.body.dataset.channel = channel;
   elements.search.value = "";
-  elements.favorites.textContent = "♡ 收藏";
+  elements.favorites.textContent = "收藏";
+  elements.favorites.setAttribute("aria-pressed", "false");
   elements.channelTriggers.forEach((entry) => {
-    entry.classList.toggle("is-active", entry.dataset.channel === channel);
+    const active = entry.dataset.channel === channel;
+    entry.classList.toggle("is-active", active);
+    if (entry.classList.contains("category-entry")) {
+      if (active) entry.setAttribute("aria-current", "page");
+      else entry.removeAttribute("aria-current");
+    }
   });
   const config = channelCatalog[channel];
   elements.eyebrow.textContent = config.eyebrow;
@@ -724,6 +731,11 @@ function switchChannel(channel) {
     foodView = "list";
     elements.foodMapPanel.hidden = true;
   }
+  elements.foodViewSwitch.querySelectorAll("[data-view]").forEach((button) => {
+    const active = button.dataset.view === foodView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   renderFilters();
   render();
   document.querySelector(".catalog-section").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -731,23 +743,23 @@ function switchChannel(channel) {
 
 function updateSyncStatus() {
   if (currentChannel === "food") {
-    elements.syncStatus.textContent = cloudFoodItems.length ? "云端地点已连接" : "正在读取地点...";
+    elements.syncStatus.textContent = foodLoading ? "正在读取地点..." : cloudFoodItems.length ? "云端地点已连接" : "地点库暂时不可用";
     return;
   }
   const count = cloudCatalogItems[currentChannel]?.length || 0;
-  elements.syncStatus.textContent = count ? `云端商品库 · ${count} 件` : "该频道等待首批导入";
+  elements.syncStatus.textContent = catalogLoading ? "正在读取商品..." : count ? `云端商品库 · ${count} 件` : "该频道等待首批导入";
 }
 
 function renderFilters() {
   const filters = channelCatalog[currentChannel].filters;
   elements.filters.innerHTML = filters.map((filter) =>
-    `<button type="button" class="filter-chip${filter === activeFilter ? " is-active" : ""}" data-filter="${escapeHtml(filter)}">${escapeHtml(filter)}</button>`
+    `<button type="button" class="filter-chip${filter === activeFilter ? " is-active" : ""}" data-filter="${escapeHtml(filter)}" aria-pressed="${filter === activeFilter}">${escapeHtml(filter)}</button>`
   ).join("");
 }
 
 function currentItems() {
   const imported = cloudCatalogItems[currentChannel] || [];
-  const source = currentChannel === "food" ? cloudFoodItems : (imported.length ? imported : catalogShelves[currentChannel] || []);
+  const source = currentChannel === "food" ? cloudFoodItems : imported;
   const query = elements.search.value.trim().toLowerCase();
   const reviewed = applyLocalReviewStats(source);
   let items = reviewed.filter((item) => {
@@ -782,16 +794,40 @@ function applyLocalReviewStats(items) {
 }
 
 function render() {
+  const loading = currentChannel === "food" ? foodLoading : catalogLoading;
+  elements.catalogSection.setAttribute("aria-busy", String(loading));
+  elements.loading.hidden = !loading;
+  if (loading) {
+    elements.count.textContent = "—";
+    elements.grid.innerHTML = "";
+    elements.grid.hidden = true;
+    elements.empty.hidden = true;
+    elements.more.hidden = true;
+    return;
+  }
+
   const items = currentItems();
   elements.count.textContent = items.length;
   elements.grid.innerHTML = "";
+  elements.grid.hidden = false;
   elements.empty.hidden = items.length > 0;
   if (!items.length) {
     const hasQuery = Boolean(elements.search.value.trim()) || activeFilter !== "全部" || favoritesOnly;
-    elements.emptyTitle.textContent = hasQuery ? "没有符合条件的品目" : "这个分类的品目还没导入";
-    elements.emptyDescription.textContent = hasQuery
-      ? "换个关键词或筛选条件再试一次。"
-      : "品目由平台批量导入，接入数据源后会直接出现在这里。";
+    elements.emptyActions.hidden = hasQuery || currentChannel === "food" || currentChannel === "beauty";
+    if (favoritesOnly) {
+      elements.emptyTitle.textContent = "还没有收藏";
+      elements.emptyDescription.textContent = "在品目卡片上点收藏，之后可以从这里快速找回。";
+    } else if (hasQuery) {
+      elements.emptyTitle.textContent = "没有符合条件的品目";
+      elements.emptyDescription.textContent = "换个关键词或筛选条件再试一次。";
+    } else {
+      elements.emptyTitle.textContent = currentChannel === "life" ? "生活品目正在整理" : currentChannel === "fashion" ? "潮流品目正在整理" : "这个频道暂时没有品目";
+      elements.emptyDescription.textContent = currentChannel === "life"
+        ? "Daiso、便利店、家居和文具会由平台统一导入，避免用户重复创建同一件商品。"
+        : currentChannel === "fashion"
+          ? "韩国品牌、鞋包和配饰会由平台统一导入；开放后可直接收藏并发布带图评价。"
+          : "稍后再来看看，或先浏览已经开放的频道。";
+    }
   }
   const visibleItems = items.slice(0, visibleLimit);
 
@@ -816,27 +852,22 @@ function render() {
     openButton.setAttribute("aria-label", `查看 ${item.title} 详情`);
     card.querySelector(".card-category").textContent = item.kind === "product" ? item.brand : item.category;
     card.querySelector(".card-title").textContent = item.title;
-    const originalName = card.querySelector(".card-original");
-    if (item.originalName) {
-      originalName.textContent = item.originalName;
-      originalName.hidden = false;
-    }
     card.querySelector(".card-note").textContent = item.price ? `₩${item.price.toLocaleString("ko-KR")}` : item.note;
-    card.querySelector(".card-rating").textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
-    card.querySelector(".card-reviews").textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "0 条体验";
+    card.querySelector(".card-rating").textContent = item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评";
+    const reviewCount = card.querySelector(".card-reviews");
+    reviewCount.textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "";
+    reviewCount.hidden = !item.reviewCount;
 
     const favorite = card.querySelector(".card-favorite");
-    favorite.dataset.active = String(favoriteIds.has(item.id));
-    favorite.textContent = favoriteIds.has(item.id) ? "♥" : "♡";
+    const favoriteActive = favoriteIds.has(item.id);
+    favorite.dataset.active = String(favoriteActive);
+    favorite.setAttribute("aria-pressed", String(favoriteActive));
+    favorite.setAttribute("aria-label", favoriteActive ? `取消收藏 ${item.title}` : `收藏 ${item.title}`);
     favorite.addEventListener("click", (event) => {
       event.stopPropagation();
-      toggleFavorite(item.id);
+      toggleFavorite(item);
     });
-    if (item.kind === "shelf") {
-      openButton.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
-    } else {
-      openButton.addEventListener("click", () => openDetailModal(item));
-    }
+    openButton.addEventListener("click", () => openDetailModal(item));
     elements.grid.append(card);
     if (index === 7 && currentChannel !== "food") elements.grid.append(createFeedAd());
   });
@@ -851,7 +882,9 @@ function showFoodView(view) {
   if (currentChannel !== "food") return;
   foodView = view === "map" ? "map" : "list";
   elements.foodViewSwitch.querySelectorAll("[data-view]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.view === foodView);
+    const active = button.dataset.view === foodView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
   syncFoodViewVisibility();
   if (foodView === "map") {
@@ -878,22 +911,65 @@ async function loadFoodMap() {
     return;
   }
   elements.mapStatus.textContent = "正在加载韩国地图...";
+  elements.startAddPlace.disabled = true;
   try {
     const provider = await ensureMapProvider();
     if (!provider) throw new Error("地图服务未加载");
     mapProvider = provider.name;
     mapSdk = provider.sdk;
+    document.querySelector("#map").replaceChildren();
     if (mapProvider === "tencent") initializeTencentMap();
     else initializeKakaoMap();
+    elements.startAddPlace.disabled = false;
+    elements.startAddPlace.textContent = "添加新地点";
     elements.mapStatus.textContent = mapProvider === "tencent"
       ? "腾讯地图 · 面向中国访问"
       : "韩国地图临时后备 · 腾讯地图配置中";
     drawFoodMarkers();
   } catch (error) {
-    elements.mapStatus.textContent = "当前网络无法加载地图，请先使用榜单";
-    document.querySelector("#map").innerHTML = '<div class="catalog-empty"><strong>地图暂时不可用</strong><span>地点数据没有丢失，仍可使用榜单浏览。</span></div>';
-    console.error("[map] load failed", error);
+    mapProviderLoadPromise = null;
+    elements.startAddPlace.disabled = true;
+    elements.startAddPlace.textContent = "底图恢复后可添加";
+    elements.mapStatus.textContent = "底图暂时不可用 · 地点列表仍可浏览";
+    renderMapFallback();
+    console.warn("[map] provider unavailable", error);
   }
+}
+
+function renderMapFallback() {
+  const root = document.querySelector("#map");
+  const fallback = document.createElement("div");
+  fallback.className = "map-fallback";
+
+  const copy = document.createElement("div");
+  copy.className = "map-fallback-copy";
+  const title = document.createElement("strong");
+  title.textContent = "地图底图暂时没有加载出来";
+  const description = document.createElement("p");
+  description.textContent = "地点数据仍然完整。先从下面打开餐厅详情；底图恢复后会自动重新提供定位与新增地点。";
+  copy.append(title, description);
+
+  const list = document.createElement("div");
+  list.className = "map-fallback-list";
+  list.setAttribute("aria-label", "可浏览的美食地点");
+  [...cloudFoodItems]
+    .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount)
+    .slice(0, 12)
+    .forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "map-fallback-place";
+      const name = document.createElement("strong");
+      name.textContent = item.title;
+      const meta = document.createElement("span");
+      meta.textContent = `${item.category} · ${item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评"}`;
+      button.append(name, meta);
+      button.addEventListener("click", () => openDetailModal(item));
+      list.append(button);
+    });
+
+  fallback.append(copy, list);
+  root.replaceChildren(fallback);
 }
 
 async function ensureMapProvider() {
@@ -1035,7 +1111,7 @@ function openMapPopup(item) {
     activeMapPopup = new mapSdk.InfoWindow({
       map,
       position: new mapSdk.LatLng(item.lat, item.lng),
-      content: `<div class="map-popup"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评"}</span></div>`,
+      content: `<div class="map-popup"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评"}</span></div>`,
       enableCustom: true,
       offset: { x: 0, y: -48 },
       zIndex: 900,
@@ -1044,7 +1120,7 @@ function openMapPopup(item) {
   }
   const popup = document.createElement("div");
   popup.className = "map-popup";
-  popup.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评"}</span>`;
+  popup.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评"}</span>`;
   activeMapPopup = new kakaoSdk.maps.CustomOverlay({
     position: new kakaoSdk.maps.LatLng(item.lat, item.lng),
     content: popup,
@@ -1057,6 +1133,7 @@ function openMapPopup(item) {
 }
 
 function startAddingPlace() {
+  if (!map) return showToast("地图底图恢复后才能选择新地点坐标。");
   if (!requireUser()) return;
   addingPlace = true;
   selectedCoordinates = null;
@@ -1146,34 +1223,18 @@ async function saveNewPlace() {
   try {
     const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`;
     const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub || "";
-    let response = await fetch(endpoint, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify({ ...payload, created_by: userId }),
     });
-
-    // During the rollout, the legacy table may still be on the phase-one schema:
-    // authenticated inserts are not granted yet and `created_by` does not exist.
-    // Keep that deployment working until the final auth migration is applied.
-    if (!response.ok && [400, 401, 403].includes(response.status)) {
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          apikey: config.anonKey,
-          Authorization: `Bearer ${config.anonKey}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify(payload),
-      });
-    }
     if (!response.ok) throw new Error(await response.text());
     const rows = await response.json();
     cloudFoodItems.unshift(mapFoodPlace(rows[0] || payload));
     cancelAddingPlace();
     drawFoodMarkers();
     render();
-    showToast("新地点已加入美食地图。");
+    showToast("新地点已提交到美食地图。 ");
   } catch (error) {
     showToast("地点保存失败，请稍后再试。");
     console.error("[map] insert failed", error);
@@ -1192,11 +1253,92 @@ function getDeviceId() {
   return id;
 }
 
-function toggleFavorite(id) {
-  if (favoriteIds.has(id)) favoriteIds.delete(id);
-  else favoriteIds.add(id);
+function toggleFavorite(item) {
+  const id = item.id;
+  const active = !favoriteIds.has(id);
+  if (active) favoriteIds.add(id);
+  else favoriteIds.delete(id);
   localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favoriteIds]));
   render();
+  if (authSession) syncFavoriteToCloud(item, active);
+}
+
+function favoriteTarget(item) {
+  if (item.kind === "place") {
+    const placeId = item.canonicalPlaceId || canonicalPlaceIds.get(String(item.id));
+    return placeId ? { place_id: placeId } : null;
+  }
+  return { item_id: item.id };
+}
+
+async function loadCloudFavorites() {
+  const config = window.SUPABASE_CONFIG || {};
+  const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub;
+  if (!config.url || !userId) return;
+  try {
+    const baseUrl = config.url.replace(/\/$/, "");
+    const endpoint = `${baseUrl}/rest/v1/favorites?select=item_id,place_id&user_id=eq.${encodeURIComponent(userId)}`;
+    const response = await fetch(endpoint, { headers: supabaseHeaders() });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const rows = await response.json();
+    const canonicalToLegacy = new Map([...canonicalPlaceIds].map(([legacyId, placeId]) => [placeId, legacyId]));
+    const remoteIds = new Set();
+    rows.forEach((row) => {
+      if (row.item_id) remoteIds.add(String(row.item_id));
+      if (row.place_id && canonicalToLegacy.has(String(row.place_id))) remoteIds.add(canonicalToLegacy.get(String(row.place_id)));
+    });
+    remoteIds.forEach((id) => favoriteIds.add(id));
+
+    const localIds = loadSet(FAVORITES_KEY);
+    const missingRows = allCatalogItems()
+      .filter((item) => localIds.has(item.id) && !remoteIds.has(item.id))
+      .map((item) => favoriteTarget(item))
+      .filter(Boolean)
+      .map((target) => ({ user_id: userId, item_id: target.item_id || null, place_id: target.place_id || null }));
+    if (missingRows.length) {
+      const migrateResponse = await fetch(`${baseUrl}/rest/v1/favorites`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify(missingRows),
+      });
+      if (!migrateResponse.ok) throw new Error(`HTTP ${migrateResponse.status}`);
+    }
+  } catch (error) {
+    console.warn("[favorites] cloud load failed", error);
+  }
+}
+
+async function syncFavoriteToCloud(item, active) {
+  const config = window.SUPABASE_CONFIG || {};
+  const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub;
+  const target = favoriteTarget(item);
+  if (!config.url || !userId || !target) return;
+  const baseUrl = config.url.replace(/\/$/, "");
+  try {
+    if (active) {
+      const response = await fetch(`${baseUrl}/rest/v1/favorites`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify({ user_id: userId, ...target }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } else {
+      const field = target.item_id ? "item_id" : "place_id";
+      const response = await fetch(`${baseUrl}/rest/v1/favorites?user_id=eq.${encodeURIComponent(userId)}&${field}=eq.${encodeURIComponent(target[field])}`, {
+        method: "DELETE",
+        headers: supabaseHeaders(),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (error) {
+    if (active) favoriteIds.delete(item.id);
+    else favoriteIds.add(item.id);
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favoriteIds]));
+    render();
+    if (detailItem?.id === item.id) syncDetailFavorite();
+    showToast("收藏同步失败，已恢复原状态。 ");
+    console.warn("[favorites] cloud sync failed", error);
+  }
 }
 
 function createFeedAd() {
@@ -1217,17 +1359,19 @@ function openDetailModal(item) {
   elements.detailOriginal.textContent = item.originalName || "";
   elements.detailOriginal.hidden = !item.originalName;
   elements.detailNote.textContent = item.note;
-  elements.detailRating.textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
+  elements.detailRating.textContent = item.rating ? `${item.rating.toFixed(1)} 分` : "等待首评";
   elements.detailReviewCount.textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "还没有评价";
   elements.detailImage.src = item.imageUrl || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
   elements.detailImage.alt = item.imageUrl ? `${item.title} 官方商品图` : "";
   elements.detailImage.parentElement.classList.toggle("has-image", Boolean(item.imageUrl));
   elements.detailImage.hidden = !item.imageUrl;
-  elements.detailSource.href = item.sourceUrl || "#";
-  elements.detailSource.hidden = !item.sourceUrl;
+  const sourceUrl = safeHttpUrl(item.sourceUrl);
+  elements.detailSource.href = sourceUrl || "#";
+  elements.detailSource.hidden = !sourceUrl;
   syncDetailFavorite();
   renderDetailReviews(item);
   activateModal(elements.detailModal, elements.closeDetail);
+  loadCloudReviews(item);
 }
 
 function closeDetailModal() {
@@ -1238,24 +1382,145 @@ function closeDetailModal() {
 function syncDetailFavorite() {
   if (!detailItem) return;
   const active = favoriteIds.has(detailItem.id);
-  elements.detailFavorite.textContent = active ? "♥ 已收藏" : "♡ 收藏";
+  elements.detailFavorite.textContent = active ? "已收藏" : "加入收藏";
   elements.detailFavorite.dataset.active = String(active);
+  elements.detailFavorite.setAttribute("aria-pressed", String(active));
 }
 
 function renderDetailReviews(item) {
-  const reviews = localReviews.filter((review) => review.itemId === item.id);
-  elements.detailReviewSummary.textContent = reviews.length ? `${reviews.length} 条当前设备评价` : "等待第一条真实体验";
+  const cache = cloudReviewCache.get(reviewCacheKey(item));
+  const local = localReviews.filter((review) => review.itemId === item.id).map((review) => ({ ...review, source: "local" }));
+  const cloud = cache?.reviews || [];
+  const reviews = [...cloud, ...local];
+  const pendingCount = cloud.filter((review) => review.moderationStatus === "pending").length;
+  elements.detailReviewSummary.textContent = cache?.status === "loading"
+    ? "正在读取评价…"
+    : reviews.length
+      ? `${reviews.length} 条体验${pendingCount ? ` · ${pendingCount} 条待审核` : ""}`
+      : "等待第一条真实体验";
+  elements.detailReviewList.replaceChildren();
   if (!reviews.length) {
-    elements.detailReviewList.innerHTML = '<div class="review-empty"><strong>还没有带图评价</strong><p>用过或吃过之后，上传实拍并留下第一条真实体验。</p></div>';
+    const empty = document.createElement("div");
+    empty.className = "review-empty";
+    const title = document.createElement("strong");
+    title.textContent = cache?.status === "loading" ? "正在读取带图评价" : "还没有带图评价";
+    const description = document.createElement("p");
+    description.textContent = cache?.status === "loading" ? "请稍候。" : "用过或吃过之后，上传实拍并留下第一条真实体验。";
+    empty.append(title, description);
+    elements.detailReviewList.append(empty);
     return;
   }
-  elements.detailReviewList.innerHTML = reviews.map((review) => `
-    <article class="detail-review-card">
-      <div><strong>★ ${Number(review.rating).toFixed(1)}</strong><span>${formatDate(review.createdAt)}</span></div>
-      <p>${escapeHtml(review.text)}</p>
-      ${review.photos?.length ? `<div class="review-photo-grid">${review.photos.map((photo, index) => `<img src="${photo}" alt="评价实拍 ${index + 1}" loading="lazy" />`).join("")}</div>` : ""}
-      <small>${review.photos?.length ? `${review.photoCount || review.photos.length} 张实拍 · 当前设备` : "照片将在云端存储接入后显示"}</small>
-    </article>`).join("");
+  reviews.forEach((review) => elements.detailReviewList.append(createReviewCard(review)));
+}
+
+function createReviewCard(review) {
+  const card = document.createElement("article");
+  card.className = "detail-review-card";
+  const head = document.createElement("div");
+  const rating = document.createElement("strong");
+  rating.textContent = `${Number(review.rating).toFixed(1)} 分`;
+  const date = document.createElement("span");
+  date.textContent = formatDate(review.createdAt);
+  head.append(rating, date);
+  const body = document.createElement("p");
+  body.textContent = review.text;
+  card.append(head, body);
+  if (review.photos?.length) {
+    const photos = document.createElement("div");
+    photos.className = "review-photo-grid";
+    review.photos.forEach((photo, index) => {
+      const image = document.createElement("img");
+      image.src = photo;
+      image.alt = `评价实拍 ${index + 1}`;
+      image.loading = "lazy";
+      photos.append(image);
+    });
+    card.append(photos);
+  }
+  const meta = document.createElement("small");
+  meta.textContent = review.moderationStatus === "pending"
+    ? "仅你可见 · 等待审核"
+    : review.source === "local"
+      ? `${review.photoCount || review.photos?.length || 0} 张实拍 · 当前设备旧评价`
+      : `${review.photos?.length || 0} 张实拍`;
+  card.append(meta);
+  return card;
+}
+
+function reviewCacheKey(item) {
+  return item.kind === "place" ? `place:${item.canonicalPlaceId || item.id}` : `item:${item.id}`;
+}
+
+function reviewTarget(item) {
+  if (item.kind === "place") {
+    const placeId = item.canonicalPlaceId || canonicalPlaceIds.get(String(item.id));
+    return placeId ? { field: "place_id", id: placeId } : null;
+  }
+  return { field: "item_id", id: item.id };
+}
+
+async function loadCloudReviews(item, force = false) {
+  const target = reviewTarget(item);
+  const config = window.SUPABASE_CONFIG || {};
+  if (!target || !config.url || !config.anonKey) return;
+  const key = reviewCacheKey(item);
+  const existing = cloudReviewCache.get(key);
+  if (!force && (existing?.status === "loading" || existing?.status === "ready")) return;
+  cloudReviewCache.set(key, { status: "loading", reviews: existing?.reviews || [] });
+  if (detailItem?.id === item.id) renderDetailReviews(item);
+  const baseUrl = config.url.replace(/\/$/, "");
+  try {
+    const endpoint = `${baseUrl}/rest/v1/reviews?select=id,rating,body,moderation_status,created_at&${target.field}=eq.${encodeURIComponent(target.id)}&order=created_at.desc`;
+    const response = await fetch(endpoint, { headers: supabaseHeaders() });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const rows = await response.json();
+    const reviewIds = rows.map((row) => row.id);
+    let photosByReview = new Map();
+    if (reviewIds.length) {
+      const photoEndpoint = `${baseUrl}/rest/v1/review_photos?select=review_id,storage_path,sort_order&review_id=in.(${reviewIds.join(",")})&order=sort_order.asc`;
+      const photoResponse = await fetch(photoEndpoint, { headers: supabaseHeaders() });
+      if (!photoResponse.ok) throw new Error(`HTTP ${photoResponse.status}`);
+      const photoRows = await photoResponse.json();
+      const signed = await Promise.all(photoRows.map(async (photo) => ({ ...photo, url: await createSignedReviewPhotoUrl(photo.storage_path) })));
+      photosByReview = signed.reduce((mapByReview, photo) => {
+        if (!mapByReview.has(photo.review_id)) mapByReview.set(photo.review_id, []);
+        if (photo.url) mapByReview.get(photo.review_id).push(photo.url);
+        return mapByReview;
+      }, new Map());
+    }
+    const reviews = rows.map((row) => ({
+      id: row.id,
+      rating: Number(row.rating),
+      text: row.body,
+      moderationStatus: row.moderation_status,
+      createdAt: row.created_at,
+      photos: photosByReview.get(row.id) || [],
+      source: "cloud",
+    }));
+    cloudReviewCache.set(key, { status: "ready", reviews });
+  } catch (error) {
+    cloudReviewCache.set(key, { status: "error", reviews: existing?.reviews || [] });
+    console.warn("[reviews] cloud load failed", error);
+  }
+  if (detailItem?.id === item.id) renderDetailReviews(item);
+}
+
+async function createSignedReviewPhotoUrl(storagePath) {
+  const config = window.SUPABASE_CONFIG || {};
+  const baseUrl = config.url.replace(/\/$/, "");
+  const encodedPath = String(storagePath).split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`${baseUrl}/storage/v1/object/sign/review-photos/${encodedPath}`, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ expiresIn: 3600 }),
+  });
+  if (!response.ok) return "";
+  const value = await response.json();
+  const signedPath = value.signedURL || value.signedUrl || "";
+  if (!signedPath) return "";
+  if (signedPath.startsWith("http")) return signedPath;
+  if (signedPath.startsWith("/storage/v1")) return `${baseUrl}${signedPath}`;
+  return `${baseUrl}/storage/v1${signedPath}`;
 }
 
 function formatDate(value) {
@@ -1270,14 +1535,12 @@ function openReviewModal(item = null) {
     showToast("品目正在导入，完成后才能绑定评价。");
     return;
   }
-  selectedItemId = item ? item.id : null;
   elements.itemInput.value = item ? item.title : "";
   activateModal(elements.modal, elements.itemInput);
 }
 
 function closeReviewModal() {
   deactivateModal(elements.modal);
-  selectedItemId = null;
   clearPhotoPreview();
   elements.form.reset();
   elements.rating.value = "5";
@@ -1289,7 +1552,7 @@ async function saveReview(event) {
   const title = elements.itemInput.value.trim();
   const item = allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
   if (!item) {
-    showToast("请从已有品目中选择；品目补充功能将在账号系统接入后开放。");
+    showToast("请从已有品目中选择；缺少的商品需由平台审核后入库。");
     elements.itemInput.focus();
     return;
   }
@@ -1299,38 +1562,85 @@ async function saveReview(event) {
     return;
   }
   const files = [...elements.photo.files];
-  let photos;
-  try {
-    photos = await Promise.all(files.slice(0, 6).map(createReviewThumbnail));
-  } catch (error) {
-    showToast("照片处理失败，请换一张后重试。");
-    console.error("[review] photo processing failed", error);
+  const invalidFile = files.find((file) => !file.type.startsWith("image/") || file.size > 12 * 1024 * 1024);
+  if (invalidFile) {
+    showToast("请选择图片文件，每张不超过 12MB。 ");
+    elements.photo.focus();
     return;
   }
-  localReviews.unshift({
-    id: crypto.randomUUID(),
-    itemId: item.id,
-    rating: Number(elements.rating.value),
-    text: elements.reviewText.value.trim(),
-    hasPhoto: true,
-    photoCount: Math.min(files.length, 6),
-    photos,
-    createdAt: new Date().toISOString(),
-  });
-  try {
-    localStorage.setItem(REVIEWS_KEY, JSON.stringify(localReviews));
-  } catch (error) {
-    localReviews.shift();
-    showToast("照片占用空间过大，请减少数量后重试。");
-    console.error("[review] local storage failed", error);
+  const target = reviewTarget(item);
+  if (!target) {
+    showToast("这个地点仍在迁移，暂时无法绑定评价。 ");
     return;
   }
-  closeReviewModal();
-  render();
-  showToast("评价已保存到当前设备；账号和云端同步将在后端改造后接入。");
+  const config = window.SUPABASE_CONFIG || {};
+  const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub;
+  if (!config.url || !userId) {
+    showToast("登录状态已失效，请重新登录。 ");
+    return;
+  }
+  elements.submitReview.disabled = true;
+  elements.submitReview.textContent = "正在提交…";
+  let reviewId = "";
+  const uploadedPaths = [];
+  try {
+    await refreshAuthSessionIfNeeded();
+    const baseUrl = config.url.replace(/\/$/, "");
+    const reviewResponse = await fetch(`${baseUrl}/rest/v1/reviews`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: userId,
+        [target.field]: target.id,
+        rating: Number(elements.rating.value),
+        body: elements.reviewText.value.trim(),
+        moderation_status: "pending",
+      }),
+    });
+    if (!reviewResponse.ok) {
+      const errorText = await reviewResponse.text();
+      if (reviewResponse.status === 409) throw new Error("DUPLICATE_REVIEW");
+      throw new Error(errorText || `HTTP ${reviewResponse.status}`);
+    }
+    const reviewRows = await reviewResponse.json();
+    reviewId = reviewRows[0]?.id || "";
+    if (!reviewId) throw new Error("评价记录创建失败");
+
+    const photoRows = [];
+    for (const [index, file] of files.slice(0, 6).entries()) {
+      const blob = await createReviewUploadBlob(file);
+      const storagePath = `${userId}/${reviewId}/${crypto.randomUUID()}.jpg`;
+      const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
+      const uploadResponse = await fetch(`${baseUrl}/storage/v1/object/review-photos/${encodedPath}`, {
+        method: "POST",
+        headers: { ...supabaseHeaders(), "Content-Type": "image/jpeg", "x-upsert": "false" },
+        body: blob,
+      });
+      if (!uploadResponse.ok) throw new Error(`照片上传失败 HTTP ${uploadResponse.status}`);
+      uploadedPaths.push(storagePath);
+      photoRows.push({ review_id: reviewId, storage_path: storagePath, sort_order: index });
+    }
+    const photoRecordResponse = await fetch(`${baseUrl}/rest/v1/review_photos`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(photoRows),
+    });
+    if (!photoRecordResponse.ok) throw new Error(`照片记录保存失败 HTTP ${photoRecordResponse.status}`);
+
+    cloudReviewCache.delete(reviewCacheKey(item));
+    closeReviewModal();
+    showToast("评价已提交，审核通过后会公开展示。 ");
+  } catch (error) {
+    await discardReviewDraft(reviewId, uploadedPaths);
+    showToast(error.message === "DUPLICATE_REVIEW" ? "每个品目目前限写一条评价；编辑功能即将开放。" : "评价提交失败，请检查照片后重试。 ");
+    console.warn("[review] submit failed", error);
+  } finally {
+    elements.submitReview.disabled = false;
+    elements.submitReview.textContent = "提交评价";
+  }
 }
 
-function createReviewThumbnail(file) {
+function createReviewUploadBlob(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("照片读取失败"));
@@ -1338,18 +1648,31 @@ function createReviewThumbnail(file) {
       const image = new Image();
       image.onerror = () => reject(new Error("照片解析失败"));
       image.onload = () => {
-        const maxSide = 520;
+        const maxSide = 1600;
         const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
         canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
         canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.68));
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("照片压缩失败")), "image/jpeg", 0.82);
       };
       image.src = String(reader.result);
     };
     reader.readAsDataURL(file);
   });
+}
+
+async function discardReviewDraft(reviewId, storagePaths) {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !authSession) return;
+  const baseUrl = config.url.replace(/\/$/, "");
+  await Promise.allSettled(storagePaths.map((storagePath) => {
+    const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
+    return fetch(`${baseUrl}/storage/v1/object/review-photos/${encodedPath}`, { method: "DELETE", headers: supabaseHeaders() });
+  }));
+  if (reviewId) {
+    await fetch(`${baseUrl}/rest/v1/reviews?id=eq.${encodeURIComponent(reviewId)}`, { method: "DELETE", headers: supabaseHeaders() }).catch(() => {});
+  }
 }
 
 function activateModal(modal, focusTarget) {
@@ -1393,6 +1716,11 @@ function previewPhoto() {
   if (files.length > 6) {
     elements.photo.value = "";
     showToast("一次最多上传 6 张照片。 ");
+    return;
+  }
+  if (files.some((file) => !file.type.startsWith("image/") || file.size > 12 * 1024 * 1024)) {
+    elements.photo.value = "";
+    showToast("请选择图片文件，每张不超过 12MB。 ");
     return;
   }
   files.forEach((file, index) => {
@@ -1449,6 +1777,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""), window.location.origin);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 init();

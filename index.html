@@ -7,7 +7,7 @@
   <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
   <title>伴饭 · 来韩国照着选</title>
   <link rel="stylesheet" href="./tokens.css?v=20260927h" />
-  <link rel="stylesheet" href="./redesign.css?v=20260927m" />
+  <link rel="stylesheet" href="./redesign.css?v=20260927n" />
 </head>
 <body data-channel="food">
   <header class="site-header">
@@ -21,7 +21,7 @@
         <input id="searchInput" type="search" aria-label="搜索商品、品牌或店铺" placeholder="搜索商品、品牌或店铺" autocomplete="off" />
       </label>
       <div class="header-actions">
-        <button id="openFavoritesButton" class="text-button" type="button">♡ 收藏</button>
+        <button id="openFavoritesButton" class="text-button" type="button" aria-pressed="false">收藏</button>
         <button id="accountButton" class="text-button account-button" type="button">登录</button>
         <button id="openReviewButton" class="primary-button" type="button">写评价</button>
       </div>
@@ -29,6 +29,21 @@
   </header>
 
   <main class="catalog-shell">
+    <nav class="category-launcher" aria-label="四大频道">
+      <button class="category-entry is-active" type="button" data-channel="food" aria-current="page">
+        <span class="entry-copy"><strong>美食</strong><small>餐厅 · 零食 · 饮料</small></span><span class="entry-en">FOOD</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="beauty">
+        <span class="entry-copy"><strong>美妆</strong><small>Olive Young · 护肤 · 彩妆</small></span><span class="entry-en">BEAUTY</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="life">
+        <span class="entry-copy"><strong>生活</strong><small>Daiso · 便利店 · 家居</small></span><span class="entry-en">LIFE</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="fashion">
+        <span class="entry-copy"><strong>潮流</strong><small>品牌 · 穿搭 · 街区</small></span><span class="entry-en">FASHION</span>
+      </button>
+    </nav>
+
     <section class="hero" aria-label="伴饭首尔选品">
       <div class="hero-copy">
         <div class="hero-context"><span>首尔选品</span><time datetime="2026-09">2026.09</time></div>
@@ -61,21 +76,6 @@
       <small>合作位暂未开放</small>
     </aside>
 
-    <nav class="category-launcher" aria-label="四大频道">
-      <button class="category-entry is-active" type="button" data-channel="food">
-        <span class="entry-copy"><strong>美食</strong><small>餐厅 · 零食 · 饮料</small></span><span class="entry-en">FOOD</span>
-      </button>
-      <button class="category-entry" type="button" data-channel="beauty">
-        <span class="entry-copy"><strong>美妆</strong><small>Olive Young · 护肤 · 彩妆</small></span><span class="entry-en">BEAUTY</span>
-      </button>
-      <button class="category-entry" type="button" data-channel="life">
-        <span class="entry-copy"><strong>生活</strong><small>Daiso · 便利店 · 家居</small></span><span class="entry-en">LIFE</span>
-      </button>
-      <button class="category-entry" type="button" data-channel="fashion">
-        <span class="entry-copy"><strong>潮流</strong><small>品牌 · 穿搭 · 街区</small></span><span class="entry-en">FASHION</span>
-      </button>
-    </nav>
-
     <section class="catalog-section">
       <header class="catalog-header">
         <div>
@@ -92,9 +92,9 @@
       <div class="catalog-toolbar">
         <div class="filter-chips" id="filterChips" aria-label="品目筛选"></div>
         <div class="toolbar-right">
-          <div class="view-switch" id="foodViewSwitch">
-            <button class="is-active" type="button" data-view="list">榜单</button>
-            <button type="button" data-view="map">地图</button>
+          <div class="view-switch" id="foodViewSwitch" aria-label="美食查看方式">
+            <button class="is-active" type="button" data-view="list" aria-pressed="true">榜单</button>
+            <button type="button" data-view="map" aria-pressed="false">地图</button>
           </div>
           <select id="sortSelect" aria-label="排序方式">
             <option value="featured">综合</option><option value="rating">评分</option><option value="reviewed">评价数</option>
@@ -106,19 +106,23 @@
         <div id="map"></div>
         <div class="map-head">
           <div><span>FOOD MAP</span><strong>韩国美食地图</strong></div>
-          <button id="startAddPlaceButton" type="button">＋ 添加新地点</button>
+          <button id="startAddPlaceButton" type="button">添加新地点</button>
         </div>
-        <div class="map-status" id="mapStatus">地图只在打开时加载</div>
+        <div class="map-status" id="mapStatus" role="status">地图只在打开时加载</div>
         <div class="add-place-bar" id="addPlaceBar" hidden>
           <div class="add-place-copy"><strong>在地图上点一下位置</strong><span id="coordinateText">尚未选择坐标</span></div>
-          <input id="placeNameInput" placeholder="地点名称" />
-          <select id="placeCategoryInput"><option>韩餐</option><option>烤肉</option><option>街头小吃</option><option>咖啡甜品</option><option>海鲜</option><option>酒馆</option><option>日料</option><option>中餐</option><option>西餐</option></select>
-          <input id="placeNoteInput" placeholder="一句推荐理由" />
+          <input id="placeNameInput" aria-label="地点名称" placeholder="地点名称" />
+          <select id="placeCategoryInput" aria-label="地点分类"><option>韩餐</option><option>烤肉</option><option>街头小吃</option><option>咖啡甜品</option><option>海鲜</option><option>酒馆</option><option>日料</option><option>中餐</option><option>西餐</option></select>
+          <input id="placeNoteInput" aria-label="推荐理由" placeholder="一句推荐理由" />
           <button id="savePlaceButton" type="button">保存</button>
           <button id="cancelAddPlaceButton" type="button">取消</button>
         </div>
       </section>
 
+      <div class="catalog-loading" id="catalogLoading" role="status" aria-live="polite">
+        <span>正在整理品目</span>
+        <div aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
       <div class="catalog-grid" id="catalogGrid"></div>
       <div class="catalog-more" id="catalogMore" hidden>
         <button id="loadMoreButton" type="button">继续加载</button>
@@ -126,6 +130,10 @@
       <div class="catalog-empty" id="catalogEmpty" hidden>
         <strong id="emptyTitle">这个分类的品目还没导入。</strong>
         <span id="emptyDescription">品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
+        <div class="empty-actions" id="emptyActions">
+          <button class="secondary-button" type="button" data-channel="food">先看美食</button>
+          <button class="primary-button" type="button" data-channel="beauty">查看美妆</button>
+        </div>
       </div>
     </section>
   </main>
@@ -135,10 +143,10 @@
   <div class="auth-modal" id="authModal" hidden>
     <button class="modal-backdrop" id="authBackdrop" type="button" aria-label="关闭登录"></button>
     <section class="auth-sheet" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-      <button id="closeAuthButton" class="close-button auth-close" type="button" aria-label="关闭">×</button>
+      <button id="closeAuthButton" class="close-button auth-close" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
       <div class="auth-intro">
         <h2 id="authTitle">留下真正有用的体验。</h2>
-        <p>浏览不需要注册。登录后才能发布带图评价、补充地点，并在之后同步收藏。</p>
+        <p>浏览不需要注册。登录后可以发布带图评价、补充地点，并同步收藏。</p>
         <ul>
           <li>评价必须包含真实照片</li>
           <li>商品评价绑定已有品目</li>
@@ -176,7 +184,7 @@
         <div id="authAccount" class="auth-state" hidden>
           <span>当前账号</span>
           <h3 id="authAccountEmail"></h3>
-          <p>你已经可以发布带图评价和补充地点。收藏云端同步将在下一步接入。</p>
+          <p>你已经可以发布带图评价、补充地点，并在不同设备同步收藏。</p>
           <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
         </div>
         <p id="authStatus" class="auth-status" role="status" hidden></p>
@@ -189,7 +197,7 @@
     <section class="review-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
       <header class="review-header">
         <div><p class="dialog-context">照片必填 · 评价绑定已有品目</p><h2 id="reviewTitle">晒图评价</h2></div>
-        <button id="closeReviewButton" class="close-button" type="button" aria-label="关闭">×</button>
+        <button id="closeReviewButton" class="close-button" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
       </header>
       <ol class="review-steps" aria-label="评价步骤">
         <li class="is-active"><span>1</span>选择品目</li>
@@ -217,10 +225,10 @@
         <label>真实体验
           <textarea id="reviewText" required minlength="10" rows="4" maxlength="500" placeholder="至少 10 个字：口味 / 肤感 / 耐用度 / 尺码……"></textarea>
         </label>
-        <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；缺少品目的收集与审核功能将在账号系统接入后开放。美食地点可在 FOOD 地图新增。</p>
+        <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；缺少品目的收集入口将在下一步开放。美食地点可在 FOOD 地图新增。</p>
         <div class="form-actions">
           <button id="missingItemButton" class="quiet-button" type="button">品目补充功能准备中</button>
-          <button class="submit-review" type="submit">发布评价</button>
+          <button id="submitReviewButton" class="submit-review" type="submit">提交评价</button>
         </div>
       </form>
     </section>
@@ -229,7 +237,7 @@
   <div class="detail-modal" id="detailModal" hidden>
     <button class="modal-backdrop" id="detailBackdrop" type="button" aria-label="关闭详情"></button>
     <article class="detail-sheet" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
-      <button id="closeDetailButton" class="close-button detail-close" type="button" aria-label="关闭">×</button>
+      <button id="closeDetailButton" class="close-button detail-close" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
       <div class="detail-product">
         <div class="detail-media"><img id="detailImage" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" /></div>
         <div class="detail-copy">
@@ -272,16 +280,15 @@
       <div class="card-body">
         <span class="card-category"></span>
         <h3 class="card-title"></h3>
-        <p class="card-original" hidden></p>
         <p class="card-note"></p>
         <div class="card-meta"><span class="card-rating"></span><span class="card-reviews"></span></div>
       </div>
       <button class="card-open" type="button" aria-label="查看详情"></button>
-      <button class="card-favorite" type="button" aria-label="收藏">♡</button>
+      <button class="card-favorite" type="button" aria-label="收藏" aria-pressed="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20.2 4.6 13A4.8 4.8 0 0 1 11.4 6.2l.6.7.6-.7A4.8 4.8 0 1 1 19.4 13Z" /></svg></button>
     </article>
   </template>
 
   <script src="./config.js?v=20260927l"></script>
-  <script src="./app.js?v=20260927m"></script>
+  <script src="./app.js?v=20260927o"></script>
 </body>
 </html>
