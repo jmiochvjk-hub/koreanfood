@@ -1,1141 +1,713 @@
-const STORAGE_KEY = "korean-food-map.places";
-const DEVICE_ID_KEY = "korean-food-map.device-id";
-const FAVORITES_KEY = "korean-food-map.favorites";
+const FAVORITES_KEY = "banfan.catalog.favorites";
+const REVIEWS_KEY = "banfan.catalog.reviews";
 const SUPABASE_TABLE = "food_places";
-const STORAGE_BUCKET = "food-photos";
-const SEOUL = [37.5665, 126.978];
-const MERGE_RADIUS_METERS = 200;
-const PHOTO_MAX_DIM = 1600;
-const PHOTO_QUALITY = 0.85;
-const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
+const CATALOG_VIEW = "catalog_item_cards";
+const PAGE_SIZE = 24;
 
-const deviceId = getOrCreateDeviceId();
-const favoritePlaceIds = loadFavorites();
-let viewMode = "all";
-
-function getOrCreateDeviceId() {
-  try {
-    let id = localStorage.getItem(DEVICE_ID_KEY);
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem(DEVICE_ID_KEY, id);
-    }
-    return id;
-  } catch {
-    return crypto.randomUUID();
-  }
-}
-
-function loadFavorites() {
-  try {
-    const stored = localStorage.getItem(FAVORITES_KEY);
-    if (!stored) return new Set();
-    const arr = JSON.parse(stored);
-    return new Set(Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveFavorites() {
-  try {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favoritePlaceIds]));
-  } catch {
-    // best-effort
-  }
-}
-
-function toggleFavorite(id) {
-  if (favoritePlaceIds.has(id)) favoritePlaceIds.delete(id);
-  else favoritePlaceIds.add(id);
-  saveFavorites();
-}
-
-const categoryColors = {
-  韩餐: "#2f8756",
-  烤肉: "#d94b3d",
-  街头小吃: "#b07619",
-  咖啡甜品: "#7a5a3a",
-  海鲜: "#167a7f",
-  酒馆: "#6d5bd0",
-  日料: "#e36b66",
-  中餐: "#c98e1c",
-  西餐: "#3a6ea5",
+const channelCatalog = {
+  food: {
+    eyebrow: "FOOD / 美食",
+    title: "韩国美食品目",
+    description: "先看已有品目，再决定吃什么、买什么、去哪里。",
+    filters: ["全部", "韩餐", "烤肉", "街头小吃", "咖啡甜品", "海鲜"],
+    glyph: "食",
+  },
+  beauty: {
+    eyebrow: "BEAUTY / 美妆",
+    title: "韩国美妆品目",
+    description: "按肤质、功效和预算浏览，不再面对一整面热销墙盲买。",
+    filters: ["全部", "Olive Young", "护肤", "彩妆", "防晒", "发护"],
+    glyph: "妆",
+  },
+  life: {
+    eyebrow: "LIFE / 生活",
+    title: "韩国生活品目",
+    description: "Daiso、便利店、家居与文具，旅行和长期生活都能查。",
+    filters: ["全部", "Daiso", "便利店", "家居", "文具"],
+    glyph: "物",
+  },
+  fashion: {
+    eyebrow: "FASHION / 潮流",
+    title: "韩国潮流品目",
+    description: "用风格、预算和使用场景筛选品牌与单品。",
+    filters: ["全部", "韩国品牌", "基础款", "鞋包", "配饰"],
+    glyph: "潮",
+  },
 };
 
-const samplePlaces = [
-  {
-    id: "sample-1",
-    name: "明洞饺子",
-    category: "韩餐",
-    dish: "刀切面、饺子",
-    rating: 4.6,
-    price: 12000,
-    note: "适合第一次来首尔时快速补一顿热乎的。",
-    lat: 37.5626,
-    lng: 126.985,
-  },
-  {
-    id: "sample-2",
-    name: "广藏市场绿豆煎饼",
-    category: "街头小吃",
-    dish: "绿豆煎饼、紫菜包饭",
-    rating: 4.4,
-    price: 9000,
-    note: "人多但翻台快，适合边逛边吃。",
-    lat: 37.5701,
-    lng: 126.9997,
-  },
-  {
-    id: "sample-3",
-    name: "弘大烤肉收藏点",
-    category: "烤肉",
-    dish: "五花肉、冷面",
-    rating: 4.7,
-    price: 28000,
-    note: "晚上氛围好，建议提前排队。",
-    lat: 37.5563,
-    lng: 126.9236,
-  },
-  {
-    id: "sample-4",
-    name: "釜山札嘎其海鲜",
-    category: "海鲜",
-    dish: "生鱼片、辣鱼汤",
-    rating: 4.5,
-    price: 35000,
-    note: "适合加入釜山行程，价格先问清楚。",
-    lat: 35.0969,
-    lng: 129.0305,
-  },
-];
+// 非美食频道先用“品目货架”建立结构，不伪造具体商品评分。
+// 后续批量导入 catalog_items 后，用同一字段替换即可。
+const catalogShelves = {
+  beauty: [
+    makeShelf("beauty-oy", "Olive Young 全品目", "Olive Young", "门店常见商品统一入库，按成分、功效和价格筛选。", "OY"),
+    makeShelf("beauty-skin", "护肤品目库", "护肤", "洁面、化妆水、精华、面霜与面膜。", "肤"),
+    makeShelf("beauty-makeup", "彩妆品目库", "彩妆", "底妆、眼妆、唇妆与工具。", "彩"),
+    makeShelf("beauty-sun", "防晒品目库", "防晒", "记录防护力、肤感、搓泥与是否适合敏感肌。", "晒"),
+    makeShelf("beauty-hair", "头皮与发护", "发护", "洗护、染烫修护与头皮护理。", "发"),
+  ],
+  life: [
+    makeShelf("life-daiso", "Daiso 全品目", "Daiso", "价格、用途、耐用度与门店库存线索。", "D"),
+    makeShelf("life-cvs", "便利店生活品目", "便利店", "旅行应急、日用品与季节限定。", "便"),
+    makeShelf("life-home", "家居与收纳", "家居", "租房入住、清洁、收纳与长期补货。", "家"),
+    makeShelf("life-stationery", "文具与手账", "文具", "纸张、笔类、贴纸与韩国限定。", "文"),
+  ],
+  fashion: [
+    makeShelf("fashion-brand", "韩国品牌索引", "韩国品牌", "按风格、价位和线下门店浏览品牌。", "牌"),
+    makeShelf("fashion-basic", "基础款品目", "基础款", "T恤、衬衫、针织与适合通勤的基础单品。", "基"),
+    makeShelf("fashion-bag", "鞋包品目", "鞋包", "记录尺码、脚感、容量和真实使用体验。", "包"),
+    makeShelf("fashion-accessory", "配饰品目", "配饰", "眼镜、帽子、首饰与季节单品。", "饰"),
+  ],
+};
 
-let places = [];
-let selectedLatLng = null;
-let draftMarker = null;
-let db = null;
-let isCloudMode = false;
-let cloudConfigured = false;
-const markers = new Map();
-
-let map = null;
-let kakaoSdk = null;
-let activePopup = null;
+function makeShelf(id, title, category, note, glyph) {
+  return { id, title, category, note, glyph, rating: 0, reviewCount: 0, kind: "shelf" };
+}
 
 const elements = {
-  form: document.querySelector("#placeForm"),
-  name: document.querySelector("#nameInput"),
-  category: document.querySelector("#categoryInput"),
-  dish: document.querySelector("#dishInput"),
-  rating: document.querySelector("#ratingInput"),
-  price: document.querySelector("#priceInput"),
-  note: document.querySelector("#noteInput"),
-  idol: document.querySelector("#idolInput"),
-  coordinateText: document.querySelector("#coordinateText"),
-  list: document.querySelector("#placeList"),
-  count: document.querySelector("#placeCount"),
-  syncStatus: document.querySelector("#syncStatus"),
-  template: document.querySelector("#placeTemplate"),
   search: document.querySelector("#searchInput"),
-  filter: document.querySelector("#categoryFilter"),
-  locate: document.querySelector("#locateButton"),
-  seoul: document.querySelector("#seoulButton"),
-  reset: document.querySelector("#resetButton"),
-  clearDraft: document.querySelector("#clearDraftButton"),
-  addressSearch: document.querySelector("#addressSearchInput"),
-  addressSearchButton: document.querySelector("#addressSearchButton"),
-  addressResults: document.querySelector("#addressSearchResults"),
-  photo: document.querySelector("#photoInput"),
-  photoPreview: document.querySelector("#photoPreview"),
+  categoryEntries: document.querySelectorAll(".category-entry"),
+  eyebrow: document.querySelector("#channelEyebrow"),
+  title: document.querySelector("#channelTitle"),
+  description: document.querySelector("#channelDescription"),
+  syncStatus: document.querySelector("#syncStatus"),
+  count: document.querySelector("#itemCount"),
+  filters: document.querySelector("#filterChips"),
+  sort: document.querySelector("#sortSelect"),
+  foodViewSwitch: document.querySelector("#foodViewSwitch"),
+  foodMapPanel: document.querySelector("#foodMapPanel"),
+  mapStatus: document.querySelector("#mapStatus"),
+  startAddPlace: document.querySelector("#startAddPlaceButton"),
+  addPlaceBar: document.querySelector("#addPlaceBar"),
+  coordinateText: document.querySelector("#coordinateText"),
+  placeName: document.querySelector("#placeNameInput"),
+  placeCategory: document.querySelector("#placeCategoryInput"),
+  placeNote: document.querySelector("#placeNoteInput"),
+  savePlace: document.querySelector("#savePlaceButton"),
+  cancelAddPlace: document.querySelector("#cancelAddPlaceButton"),
+  grid: document.querySelector("#catalogGrid"),
+  empty: document.querySelector("#catalogEmpty"),
+  more: document.querySelector("#catalogMore"),
+  loadMore: document.querySelector("#loadMoreButton"),
+  template: document.querySelector("#catalogCardTemplate"),
+  favorites: document.querySelector("#openFavoritesButton"),
+  openReview: document.querySelector("#openReviewButton"),
+  mobileReview: document.querySelector("#mobileReviewButton"),
+  modal: document.querySelector("#reviewModal"),
+  backdrop: document.querySelector("#modalBackdrop"),
+  closeReview: document.querySelector("#closeReviewButton"),
+  form: document.querySelector("#reviewForm"),
+  itemInput: document.querySelector("#reviewItemInput"),
+  suggestions: document.querySelector("#catalogSuggestions"),
+  rating: document.querySelector("#reviewRating"),
+  photo: document.querySelector("#reviewPhoto"),
+  photoPreview: document.querySelector("#reviewPhotoPreview"),
+  reviewText: document.querySelector("#reviewText"),
+  missingItem: document.querySelector("#missingItemButton"),
+  toast: document.querySelector("#toast"),
 };
 
-let pendingPhotoBlob = null;
-let pendingPhotoObjectUrl = null;
-let kakaoReadyPromise = null;
+let currentChannel = "food";
+let activeFilter = "全部";
+let cloudFoodItems = [];
+let cloudCatalogItems = { beauty: [], life: [], fashion: [] };
+let favoriteIds = loadSet(FAVORITES_KEY);
+let localReviews = loadArray(REVIEWS_KEY);
+let favoritesOnly = false;
+let selectedItemId = null;
+let toastTimer = null;
+let photoObjectUrl = null;
+let foodView = "list";
+let map = null;
+let kakaoSdk = null;
+let mapLoadPromise = null;
+let mapOverlays = [];
+let activeMapPopup = null;
+let addingPlace = false;
+let selectedCoordinates = null;
+let draftOverlay = null;
+let visibleLimit = PAGE_SIZE;
 
-elements.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  if (!selectedLatLng) {
-    elements.coordinateText.textContent = "请先点击地图选择位置";
-    return;
-  }
-
-  if (cloudConfigured && !isCloudMode) {
-    setStatus("云端未连接，无法保存。刷新页面再试。", "warn");
-    return;
-  }
-
-  const reason = elements.note.value.trim();
-  if (!reason) {
-    elements.note.focus();
-    setStatus("请填写推荐理由", isCloudMode ? "cloud" : "local");
-    return;
-  }
-
-  setBusy(true);
-  let imageUrl = "";
-  try {
-    if (pendingPhotoBlob) {
-      if (!isCloudMode) {
-        setStatus("本地模式下暂不支持图片，已忽略图片继续保存", "local");
-      } else {
-        setStatus("正在上传图片…", "cloud");
-        imageUrl = await uploadFoodPhoto(pendingPhotoBlob);
-      }
-    }
-  } catch (error) {
-    setStatus(`图片上传失败：${error.message}`, "cloud");
-    setBusy(false);
-    return;
-  }
-
-  const place = {
-    id: crypto.randomUUID(),
-    name: elements.name.value.trim(),
-    category: elements.category.value,
-    dish: elements.dish.value.trim(),
-    rating: Number(elements.rating.value || 0),
-    price: Number(elements.price.value || 0),
-    note: reason,
-    lat: Number(selectedLatLng.lat.toFixed(6)),
-    lng: Number(selectedLatLng.lng.toFixed(6)),
-    image_url: imageUrl,
-    idol_name: elements.idol.value.trim(),
-  };
-
-  await addPlace(place);
+elements.categoryEntries.forEach((entry) => {
+  entry.addEventListener("click", () => switchChannel(entry.dataset.channel));
 });
-
-elements.search.addEventListener("input", render);
-elements.filter.addEventListener("change", render);
-elements.clearDraft.addEventListener("click", clearDraftLocation);
-
-document.querySelectorAll(".view-tab").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    viewMode = btn.dataset.view || "all";
-    document.querySelectorAll(".view-tab").forEach((other) => {
-      other.setAttribute("aria-selected", other === btn ? "true" : "false");
-    });
-    render();
-  });
+elements.search.addEventListener("input", () => resetAndRender());
+elements.sort.addEventListener("change", () => resetAndRender());
+elements.loadMore.addEventListener("click", () => {
+  visibleLimit += PAGE_SIZE;
+  render();
 });
-
-elements.addressSearchButton.addEventListener("click", () => runAddressSearch());
-elements.addressSearch.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    runAddressSearch();
-  }
+elements.foodViewSwitch.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-view]");
+  if (button) showFoodView(button.dataset.view);
 });
-
-elements.photo.addEventListener("change", () => {
-  const file = elements.photo.files && elements.photo.files[0];
-  setPendingPhoto(file || null);
+elements.startAddPlace.addEventListener("click", startAddingPlace);
+elements.cancelAddPlace.addEventListener("click", cancelAddingPlace);
+elements.savePlace.addEventListener("click", saveNewPlace);
+elements.filters.addEventListener("click", (event) => {
+  const button = event.target.closest(".filter-chip");
+  if (!button) return;
+  activeFilter = button.dataset.filter;
+  favoritesOnly = false;
+  visibleLimit = PAGE_SIZE;
+  renderFilters();
+  render();
 });
-
-elements.seoul.addEventListener("click", () => {
-  if (!map) return;
-  map.setCenter(new kakaoSdk.maps.LatLng(SEOUL[0], SEOUL[1]));
-  map.setLevel(7);
+elements.favorites.addEventListener("click", () => {
+  favoritesOnly = !favoritesOnly;
+  visibleLimit = PAGE_SIZE;
+  elements.favorites.textContent = favoritesOnly ? "♥ 只看收藏" : "♡ 收藏";
+  render();
+  document.querySelector(".catalog-section").scrollIntoView({ behavior: "smooth" });
 });
-
-elements.locate.addEventListener("click", () => {
-  if (!navigator.geolocation || !map) {
-    elements.coordinateText.textContent = "当前浏览器不支持定位";
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const latlng = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      };
-      map.setCenter(new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng));
-      map.setLevel(5);
-      setDraftLocation(latlng);
-    },
-    () => {
-      elements.coordinateText.textContent = "无法获取定位，可直接点击地图添加";
-    },
-    { enableHighAccuracy: true, timeout: 8000 },
-  );
+elements.openReview.addEventListener("click", () => openReviewModal());
+elements.mobileReview.addEventListener("click", () => openReviewModal());
+elements.closeReview.addEventListener("click", closeReviewModal);
+elements.backdrop.addEventListener("click", closeReviewModal);
+elements.photo.addEventListener("change", previewPhoto);
+elements.missingItem.addEventListener("click", () => {
+  showToast("缺少品目会进入平台审核队列，不会直接创建重复条目。");
 });
-
-elements.reset.addEventListener("click", async () => {
-  if (cloudConfigured && !isCloudMode) {
-    setStatus("云端未连接，无法重置。", "warn");
-    return;
-  }
-  const warning = isCloudMode
-    ? "确定要恢复示例数据吗？这会删除云端所有用户添加的美食点（所有设备都会清空）。"
-    : "确定要把本地数据清空、恢复示例吗？";
-  if (!window.confirm(warning)) return;
-
-  setBusy(true);
-
-  try {
-    if (isCloudMode) {
-      await db.deleteAllPlaces();
-      places = normalizePlaces(await db.insertPlaces(samplePlaces));
-    } else {
-      places = [...samplePlaces];
-      saveLocalPlaces();
-    }
-
-    render();
-    setStatus(isCloudMode ? "云端已恢复示例" : "本地已恢复示例", isCloudMode ? "cloud" : "local");
-  } catch (error) {
-    setStatus(`恢复失败：${error.message}`, isCloudMode ? "cloud" : "local");
-  } finally {
-    setBusy(false);
-  }
+elements.form.addEventListener("submit", saveReview);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.modal.hidden) closeReviewModal();
 });
 
 async function init() {
-  setupSupabase();
-  kakaoSdk = await ensureKakaoSdk();
-  if (!kakaoSdk) {
-    document.getElementById("map").innerHTML =
-      '<div class="map-fallback">Kakao Maps SDK 未加载——请检查 config.js 的 KAKAO_JS_KEY 是否已填，以及 Kakao Developers 后台的 Web 平台域名是否包含当前站点。</div>';
-    setStatus("Kakao Maps 加载失败", "local");
-    return;
-  }
-  initMap(kakaoSdk);
-  places = await loadPlaces();
+  renderFilters();
+  render();
+  await Promise.all([loadFoodItems(), loadCatalogItems()]);
   render();
 }
 
-function initMap(kakao) {
-  const container = document.getElementById("map");
-  map = new kakao.maps.Map(container, {
-    center: new kakao.maps.LatLng(SEOUL[0], SEOUL[1]),
-    level: 7,
-  });
-
-  const zoomControl = new kakao.maps.ZoomControl();
-  map.addControl(zoomControl, kakao.maps.ControlPosition.BOTTOMLEFT);
-
-  kakao.maps.event.addListener(map, "click", (mouseEvent) => {
-    closePopup();
-    const latlng = {
-      lat: mouseEvent.latLng.getLat(),
-      lng: mouseEvent.latLng.getLng(),
-    };
-    setDraftLocation(latlng);
-    elements.name.focus();
-  });
-}
-
-function setupSupabase() {
+function supabaseHeaders() {
   const config = window.SUPABASE_CONFIG || {};
-  const hasConfig = config.url && config.anonKey && !config.url.includes("YOUR_PROJECT_REF");
+  return { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` };
+}
 
-  if (!hasConfig) {
-    cloudConfigured = false;
-    isCloudMode = false;
-    setStatus("本地模式：填写 Supabase 配置后可多人同步", "local");
+async function loadFoodItems() {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey || config.url.includes("YOUR_PROJECT_REF")) {
+    elements.syncStatus.textContent = "品目库尚未连接";
     return;
   }
 
-  db = createSupabaseRestClient(config.url, config.anonKey);
-  cloudConfigured = true;
-  isCloudMode = true;
-  setStatus("正在连接云端…", "cloud");
-}
-
-async function loadPlaces() {
-  console.log("[loadPlaces] start", { cloudConfigured, isCloudMode });
-  if (cloudConfigured) {
-    try {
-      const data = await db.selectPlaces();
-      isCloudMode = true;
-      console.log("[loadPlaces] cloud SELECT ok", { rows: data.length });
-      setStatus("云端同步已连接", "cloud");
-      return normalizePlaces(data);
-    } catch (error) {
-      isCloudMode = false;
-      console.error("[loadPlaces] cloud SELECT failed", error);
-      setStatus(`云端连接失败：${error.message}（请刷新重试，不会保存到本地）`, "warn");
-      return [];
-    }
-  }
-
-  console.log("[loadPlaces] LOCAL fallback (no cloud config)");
-  return loadLocalPlaces();
-}
-
-function loadLocalPlaces() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return [...samplePlaces];
-
+  elements.syncStatus.textContent = "正在读取云端品目...";
+  const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}?select=*&order=created_at.desc`;
   try {
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [...samplePlaces];
-  } catch {
-    return [...samplePlaces];
-  }
-}
-
-function saveLocalPlaces() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(places));
-}
-
-async function addPlace(place) {
-  setBusy(true);
-
-  console.log("[addPlace] entry", {
-    cloudConfigured,
-    isCloudMode,
-    deviceId,
-    place,
-  });
-
-  if (cloudConfigured && !isCloudMode) {
-    setStatus("云端未连接，无法保存。刷新页面再试。", "warn");
-    setBusy(false);
-    return;
-  }
-
-  try {
-    const existing = findSamePlace(place);
-
-    if (existing && (existing.contributors || []).includes(deviceId)) {
-      setStatus("你已经推荐过这家店啦", "warn");
-      setBusy(false);
-      return;
-    }
-
-    let resultId;
-    let merged = false;
-
-    if (existing) {
-      const updated = mergeFields(existing, place);
-      if (isCloudMode) {
-        const data = await db.updatePlace(existing.id, updated);
-        replaceInPlaces(normalizePlace(data[0]));
-      } else {
-        replaceInPlaces({ ...existing, ...updated });
-        saveLocalPlaces();
-      }
-      resultId = existing.id;
-      merged = true;
-    } else {
-      const fresh = { ...place, submission_count: 1, contributors: [deviceId] };
-      if (isCloudMode) {
-        console.log("[addPlace] sending INSERT", fresh);
-        const data = await db.insertPlaces(fresh);
-        console.log("[addPlace] INSERT response", data);
-        places = [normalizePlace(data[0]), ...places];
-      } else {
-        console.log("[addPlace] LOCAL save", fresh);
-        places = [fresh, ...places];
-        saveLocalPlaces();
-      }
-      resultId = place.id;
-    }
-
-    elements.form.reset();
-    elements.rating.value = "4.5";
-    setPendingPhoto(null);
-    clearDraftLocation();
-    showAddressResults(null);
-    render();
-    focusPlace(resultId);
-
-    const where = isCloudMode ? "云端" : "本地";
-    const verb = merged ? "已合并评分到现有点" : "已保存";
-    setStatus(`${verb}（${where}）`, isCloudMode ? "cloud" : "local");
-    console.log("[addPlace] done", { resultId, merged, where, placesLen: places.length });
-  } catch (error) {
-    console.error("[addPlace] error", error);
-    setStatus(`添加失败：${error.message}`, "warn");
-  } finally {
-    setBusy(false);
-  }
-}
-
-function findSamePlace(candidate) {
-  const target = (candidate.name || "").trim().toLowerCase();
-  if (!target) return null;
-  return places.find((place) => {
-    if ((place.name || "").trim().toLowerCase() !== target) return false;
-    return haversineMeters(place.lat, place.lng, candidate.lat, candidate.lng) <= MERGE_RADIUS_METERS;
-  });
-}
-
-function mergeFields(existing, incoming) {
-  const prevCount = Math.max(1, Number(existing.submission_count || 1));
-  const newCount = prevCount + 1;
-
-  const rating = roundTo(((existing.rating || 0) * prevCount + (incoming.rating || 0)) / newCount, 2);
-
-  let price = existing.price || 0;
-  if (incoming.price > 0) {
-    price = existing.price > 0
-      ? Math.round(((existing.price * prevCount) + incoming.price) / newCount)
-      : incoming.price;
-  }
-
-  const image_url = existing.image_url && existing.image_url.length
-    ? existing.image_url
-    : (incoming.image_url || "");
-
-  const idol_name = existing.idol_name && existing.idol_name.length
-    ? existing.idol_name
-    : (incoming.idol_name || "");
-
-  const prevContributors = Array.isArray(existing.contributors) ? existing.contributors : [];
-  const contributors = prevContributors.includes(deviceId)
-    ? prevContributors
-    : [...prevContributors, deviceId];
-
-  return {
-    rating,
-    price,
-    note: appendReason(existing.note, incoming.note),
-    image_url,
-    idol_name,
-    contributors,
-    submission_count: newCount,
-  };
-}
-
-function appendReason(existing, incoming) {
-  const next = (incoming || "").trim();
-  const prev = (existing || "").trim();
-  if (!next) return prev;
-  const haystack = prev.toLowerCase();
-  if (haystack.includes(next.toLowerCase())) return prev;
-  const bullet = `• ${next}`;
-  return prev ? `${prev}\n${bullet}` : bullet;
-}
-
-function replaceInPlaces(updated) {
-  const idx = places.findIndex((place) => place.id === updated.id);
-  if (idx === -1) {
-    places = [updated, ...places];
-    return;
-  }
-  const next = [...places];
-  next[idx] = { ...next[idx], ...updated };
-  places = next;
-}
-
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-
-function roundTo(value, decimals) {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
-}
-
-async function deletePlace(id) {
-  if (cloudConfigured && !isCloudMode) {
-    setStatus("云端未连接，无法删除。", "warn");
-    return;
-  }
-  setBusy(true);
-
-  try {
-    if (isCloudMode) {
-      await db.deletePlace(id);
-    }
-
-    const marker = markers.get(id);
-    if (marker) {
-      marker.remove();
-      markers.delete(id);
-    }
-
-    places = places.filter((place) => place.id !== id);
-    if (!isCloudMode) saveLocalPlaces();
-    render();
-    setStatus(isCloudMode ? "已从云端删除" : "已从本地删除", isCloudMode ? "cloud" : "local");
-  } catch (error) {
-    setStatus(`删除失败：${error.message}`, isCloudMode ? "cloud" : "local");
-  } finally {
-    setBusy(false);
-  }
-}
-
-function createSupabaseRestClient(url, anonKey) {
-  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`;
-  const headers = {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
-    "Content-Type": "application/json",
-  };
-
-  async function request(path = "", options = {}) {
-    const response = await fetch(`${endpoint}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...(options.headers || {}),
-      },
+    const response = await fetch(endpoint, {
+      headers: supabaseHeaders(),
     });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || `Supabase request failed: ${response.status}`);
-    }
-
-    if (response.status === 204) return null;
-    return response.json();
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const rows = await response.json();
+    cloudFoodItems = rows.map(mapFoodPlace);
+    elements.syncStatus.textContent = "云端品目已连接";
+    if (map) drawFoodMarkers();
+  } catch (error) {
+    elements.syncStatus.textContent = "云端暂时不可用";
+    console.error("[catalog] load failed", error);
   }
+}
 
+async function loadCatalogItems() {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey || config.url.includes("YOUR_PROJECT_REF")) return;
+
+  const fields = [
+    "id", "channel", "item_type", "name_zh", "name_ko", "name_en",
+    "hero_image_url", "price_krw", "attributes", "brand_name_zh",
+    "brand_name_ko", "category_name_zh", "rating_average", "review_count",
+  ].join(",");
+  const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${CATALOG_VIEW}?select=${fields}&channel=in.(beauty,life,fashion)&limit=1000`;
+
+  try {
+    const response = await fetch(endpoint, { headers: supabaseHeaders() });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const rows = await response.json();
+    cloudCatalogItems = { beauty: [], life: [], fashion: [] };
+    rows.map(mapCatalogItem).forEach((item) => {
+      if (cloudCatalogItems[item.channel]) cloudCatalogItems[item.channel].push(item);
+    });
+    Object.values(cloudCatalogItems).forEach((items) => {
+      items.sort((a, b) => a.featuredOrder - b.featuredOrder);
+    });
+    if (currentChannel !== "food") updateSyncStatus();
+  } catch (error) {
+    console.error("[catalog] product load failed", error);
+    if (currentChannel !== "food") elements.syncStatus.textContent = "商品库暂时不可用";
+  }
+}
+
+function mapCatalogItem(item) {
+  const attributes = item.attributes && typeof item.attributes === "object" ? item.attributes : {};
+  const brand = item.brand_name_zh || item.brand_name_ko || "品牌待补";
+  const price = Number(item.price_krw || 0);
+  const listOrder = { overall: 0, skincare: 1000, makeup: 2000 }[attributes.source_list] ?? 3000;
   return {
-    selectPlaces() {
-      return request("?select=*&order=created_at.desc");
-    },
-    insertPlaces(payload) {
-      return request("", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify(payload),
-      });
-    },
-    updatePlace(id, patch) {
-      return request(`?id=eq.${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify(patch),
-      });
-    },
-    deletePlace(id) {
-      return request(`?id=eq.${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-    },
-    deleteAllPlaces() {
-      return request("?id=not.is.null", {
-        method: "DELETE",
-      });
-    },
+    id: String(item.id),
+    channel: item.channel,
+    title: item.name_zh || item.name_ko || item.name_en || "未命名商品",
+    searchText: [item.name_zh, item.name_ko, item.name_en, item.brand_name_zh, item.brand_name_ko].filter(Boolean).join(" "),
+    category: item.category_name_zh || "其他",
+    note: `${brand}${price ? ` · ₩${price.toLocaleString("ko-KR")}` : ""}`,
+    glyph: brand.slice(0, 1),
+    rating: Number(item.rating_average || 0),
+    reviewCount: Math.max(0, Number(item.review_count || 0)),
+    imageUrl: item.hero_image_url || "",
+    sourceUrl: attributes.source_url || "",
+    barcodeStatus: attributes.barcode_status || "unknown",
+    featuredOrder: listOrder + Number(attributes.source_rank || 999),
+    kind: "product",
   };
 }
 
-function normalizePlaces(data) {
-  return (data || []).map(normalizePlace);
-}
-
-function normalizePlace(place) {
+function mapFoodPlace(place) {
   return {
-    id: place.id,
-    name: place.name,
-    category: place.category || "韩餐",
-    dish: place.dish || "",
+    id: String(place.id),
+    title: place.name || "未命名品目",
+    category: place.category || "美食",
+    note: place.note || place.dish || "等待第一条真实体验。",
+    glyph: (place.category || "食").slice(0, 1),
     rating: Number(place.rating || 0),
-    price: Number(place.price || 0),
-    note: place.note || "",
+    reviewCount: Math.max(0, Number(place.submission_count || 0)),
+    imageUrl: place.image_url || "",
     lat: Number(place.lat),
     lng: Number(place.lng),
-    image_url: place.image_url || "",
-    idol_name: place.idol_name || "",
-    contributors: Array.isArray(place.contributors) ? place.contributors : [],
-    submission_count: Math.max(1, Number(place.submission_count || 1)),
+    kind: "place",
   };
 }
 
-function setDraftLocation(latlng) {
-  selectedLatLng = latlng;
-  elements.coordinateText.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
-
-  if (!map || !kakaoSdk) return;
-
-  const position = new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng);
-  if (draftMarker) {
-    draftMarker.setPosition(position);
-    return;
-  }
-
-  draftMarker = new kakaoSdk.maps.CustomOverlay({
-    position,
-    content: buildPinElement("#1d252c", "+", { draft: true }),
-    yAnchor: 1,
-    xAnchor: 0.5,
-    clickable: false,
+function switchChannel(channel) {
+  if (!channelCatalog[channel]) return;
+  currentChannel = channel;
+  activeFilter = "全部";
+  visibleLimit = PAGE_SIZE;
+  favoritesOnly = false;
+  document.body.dataset.channel = channel;
+  elements.search.value = "";
+  elements.favorites.textContent = "♡ 收藏";
+  elements.categoryEntries.forEach((entry) => {
+    entry.classList.toggle("is-active", entry.dataset.channel === channel);
   });
-  draftMarker.setMap(map);
-}
-
-function clearDraftLocation() {
-  selectedLatLng = null;
-  elements.coordinateText.textContent = "点击地图选择位置";
-
-  if (draftMarker) {
-    draftMarker.setMap(null);
-    draftMarker = null;
+  const config = channelCatalog[channel];
+  elements.eyebrow.textContent = config.eyebrow;
+  elements.title.textContent = config.title;
+  elements.description.textContent = config.description;
+  updateSyncStatus();
+  elements.foodViewSwitch.hidden = channel !== "food";
+  if (channel !== "food") {
+    foodView = "list";
+    elements.foodMapPanel.hidden = true;
   }
+  renderFilters();
+  render();
+  document.querySelector(".catalog-section").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function runAddressSearch() {
-  const query = elements.addressSearch.value.trim();
-  if (!query) {
-    showAddressResults(null);
+function updateSyncStatus() {
+  if (currentChannel === "food") {
+    elements.syncStatus.textContent = cloudFoodItems.length ? "云端地点已连接" : "正在读取地点...";
     return;
   }
+  const count = cloudCatalogItems[currentChannel]?.length || 0;
+  elements.syncStatus.textContent = count ? `云端商品库 · ${count} 件` : "该频道等待首批导入";
+}
 
-  elements.addressSearchButton.disabled = true;
-  elements.addressSearchButton.textContent = "搜索中";
+function renderFilters() {
+  const filters = channelCatalog[currentChannel].filters;
+  elements.filters.innerHTML = filters.map((filter) =>
+    `<button type="button" class="filter-chip${filter === activeFilter ? " is-active" : ""}" data-filter="${escapeHtml(filter)}">${escapeHtml(filter)}</button>`
+  ).join("");
+}
 
+function currentItems() {
+  const imported = cloudCatalogItems[currentChannel] || [];
+  const source = currentChannel === "food" ? cloudFoodItems : (imported.length ? imported : catalogShelves[currentChannel] || []);
+  const query = elements.search.value.trim().toLowerCase();
+  const reviewed = applyLocalReviewStats(source);
+  let items = reviewed.filter((item) => {
+    if (favoritesOnly && !favoriteIds.has(item.id)) return false;
+    if (activeFilter !== "全部" && item.category !== activeFilter) return false;
+    return [item.title, item.category, item.note, item.searchText || ""].join(" ").toLowerCase().includes(query);
+  });
+  const sort = elements.sort.value;
+  if (sort === "rating") items.sort((a, b) => b.rating - a.rating);
+  if (sort === "reviewed") items.sort((a, b) => b.reviewCount - a.reviewCount);
+  return items;
+}
+
+function resetAndRender() {
+  visibleLimit = PAGE_SIZE;
+  render();
+}
+
+function applyLocalReviewStats(items) {
+  return items.map((item) => {
+    const reviews = localReviews.filter((review) => review.itemId === item.id);
+    if (!reviews.length) return { ...item };
+    const baseCount = Number(item.reviewCount || 0);
+    const baseTotal = Number(item.rating || 0) * baseCount;
+    const localTotal = reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0);
+    return {
+      ...item,
+      rating: (baseTotal + localTotal) / (baseCount + reviews.length),
+      reviewCount: baseCount + reviews.length,
+    };
+  });
+}
+
+function render() {
+  const items = currentItems();
+  elements.count.textContent = items.length;
+  elements.grid.innerHTML = "";
+  elements.empty.hidden = items.length > 0;
+  const visibleItems = items.slice(0, visibleLimit);
+
+  visibleItems.forEach((item, index) => {
+    const card = elements.template.content.firstElementChild.cloneNode(true);
+    const visual = card.querySelector(".card-visual");
+    card.querySelector(".card-index").textContent = String(index + 1).padStart(2, "0");
+    card.querySelector(".card-glyph").textContent = item.glyph || channelCatalog[currentChannel].glyph;
+    if (item.imageUrl) {
+      visual.classList.add("has-image");
+      visual.style.backgroundImage = `linear-gradient(180deg, transparent, rgba(0,0,0,.25)), url("${cssUrl(item.imageUrl)}")`;
+    }
+    card.dataset.kind = item.kind;
+    card.querySelector(".card-category").textContent = item.category.toUpperCase();
+    card.querySelector(".card-title").textContent = item.title;
+    card.querySelector(".card-note").textContent = item.note;
+    card.querySelector(".card-rating").textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
+    card.querySelector(".card-reviews").textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "0 条体验";
+
+    const favorite = card.querySelector(".card-favorite");
+    favorite.dataset.active = String(favoriteIds.has(item.id));
+    favorite.textContent = favoriteIds.has(item.id) ? "♥" : "♡";
+    favorite.addEventListener("click", () => toggleFavorite(item.id));
+    const reviewButton = card.querySelector(".card-review");
+    const sourceLink = card.querySelector(".card-source");
+    if (item.sourceUrl) sourceLink.href = item.sourceUrl;
+    else sourceLink.hidden = true;
+    if (item.kind === "shelf") {
+      reviewButton.textContent = "浏览品目 →";
+      reviewButton.addEventListener("click", () => showToast("这个货架已经开放；具体品目批量导入后会直接出现在这里。"));
+    } else {
+      reviewButton.addEventListener("click", () => openReviewModal(item));
+    }
+    elements.grid.append(card);
+  });
+  const hasMore = currentChannel !== "food" && visibleItems.length < items.length;
+  elements.more.hidden = !hasMore;
+  elements.loadMore.textContent = hasMore ? `继续加载 · ${visibleItems.length} / ${items.length}` : "继续加载";
+  refreshSuggestions();
+  syncFoodViewVisibility();
+}
+
+function showFoodView(view) {
+  if (currentChannel !== "food") return;
+  foodView = view === "map" ? "map" : "list";
+  elements.foodViewSwitch.querySelectorAll("[data-view]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === foodView);
+  });
+  syncFoodViewVisibility();
+  if (foodView === "map") {
+    loadFoodMap();
+    elements.foodMapPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function syncFoodViewVisibility() {
+  const showMap = currentChannel === "food" && foodView === "map";
+  elements.foodMapPanel.hidden = !showMap;
+  elements.grid.hidden = showMap;
+  if (showMap) elements.more.hidden = true;
+  if (showMap) elements.empty.hidden = true;
+}
+
+async function loadFoodMap() {
+  if (map) {
+    setTimeout(() => map.relayout(), 0);
+    drawFoodMarkers();
+    return;
+  }
+  elements.mapStatus.textContent = "正在加载韩国地图...";
   try {
-    const kakao = await ensureKakaoSdk();
-    const results = kakao
-      ? await kakaoKeywordSearch(kakao, query)
-      : await nominatimSearch(query);
-    showAddressResults(results);
+    kakaoSdk = await ensureKakaoSdk();
+    if (!kakaoSdk) throw new Error("Kakao Maps 未加载");
+    map = new kakaoSdk.maps.Map(document.querySelector("#map"), {
+      center: new kakaoSdk.maps.LatLng(37.5665, 126.978),
+      level: 8,
+    });
+    const zoomControl = new kakaoSdk.maps.ZoomControl();
+    map.addControl(zoomControl, kakaoSdk.maps.ControlPosition.RIGHT);
+    kakaoSdk.maps.event.addListener(map, "click", (event) => {
+      if (!addingPlace) return;
+      selectPlaceCoordinates(event.latLng.getLat(), event.latLng.getLng());
+    });
+    elements.mapStatus.textContent = "当前使用韩国地图 · 国内网络失败时仍可使用榜单";
+    drawFoodMarkers();
   } catch (error) {
-    showAddressResults(null, `搜索失败：${error.message}`);
-  } finally {
-    elements.addressSearchButton.disabled = false;
-    elements.addressSearchButton.textContent = "搜索";
+    elements.mapStatus.textContent = "当前网络无法加载地图，请先使用榜单";
+    document.querySelector("#map").innerHTML = '<div class="catalog-empty"><strong>地图暂时不可用</strong><span>地点数据没有丢失。中国网页与小程序版将接入独立地图服务。</span></div>';
+    console.error("[map] load failed", error);
   }
 }
 
 function ensureKakaoSdk() {
-  if (kakaoReadyPromise) return kakaoReadyPromise;
-  const key = window.KAKAO_JS_KEY;
-  if (!key) {
-    kakaoReadyPromise = Promise.resolve(null);
-    return kakaoReadyPromise;
-  }
-
-  kakaoReadyPromise = new Promise((resolve) => {
+  if (mapLoadPromise) return mapLoadPromise;
+  if (!window.KAKAO_JS_KEY) return Promise.resolve(null);
+  mapLoadPromise = new Promise((resolve) => {
     const script = document.createElement("script");
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(window.KAKAO_JS_KEY)}&libraries=services&autoload=false`;
     script.onload = () => {
-      if (!window.kakao || !window.kakao.maps) {
-        resolve(null);
-        return;
-      }
+      if (!window.kakao || !window.kakao.maps) return resolve(null);
       window.kakao.maps.load(() => resolve(window.kakao));
     };
     script.onerror = () => resolve(null);
     document.head.append(script);
   });
-
-  return kakaoReadyPromise;
+  return mapLoadPromise;
 }
 
-function kakaoKeywordSearch(kakao, query) {
-  return new Promise((resolve, reject) => {
-    const places = new kakao.maps.services.Places();
-    places.keywordSearch(query, (data, status) => {
-      if (status === kakao.maps.services.Status.OK) {
-        const adapted = data.slice(0, 8).map((item) => ({
-          lat: Number(item.y),
-          lon: Number(item.x),
-          name: item.place_name,
-          display_name: item.road_address_name || item.address_name,
-          extra: item.category_name,
-        }));
-        resolve(adapted);
-        return;
-      }
-      if (status === kakao.maps.services.Status.ZERO_RESULT) {
-        resolve([]);
-        return;
-      }
-      reject(new Error(`Kakao 错误：${status}`));
-    });
-  });
-}
-
-async function nominatimSearch(query) {
-  const params = new URLSearchParams({
-    q: query,
-    format: "json",
-    limit: "6",
-    addressdetails: "1",
-    namedetails: "1",
-    "accept-language": "ko,zh-CN,en",
-    countrycodes: "kr",
-  });
-  const response = await fetch(`${NOMINATIM_ENDPOINT}?${params}`);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-}
-
-function showAddressResults(results, errorMessage) {
-  elements.addressResults.innerHTML = "";
-
-  if (errorMessage) {
-    const empty = document.createElement("div");
-    empty.className = "address-results-empty";
-    empty.textContent = errorMessage;
-    elements.addressResults.append(empty);
-    elements.addressResults.hidden = false;
-    return;
-  }
-
-  if (!results || !results.length) {
-    elements.addressResults.hidden = true;
-    return;
-  }
-
-  results.forEach((item) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "address-result";
-
-    const title = document.createElement("span");
-    title.className = "address-result-title";
-    title.textContent = pickResultName(item);
-
-    const meta = document.createElement("span");
-    meta.className = "address-result-meta";
-    const metaParts = [item.extra, item.display_name].filter(Boolean);
-    meta.textContent = metaParts.join(" · ");
-
-    button.append(title, meta);
-    button.addEventListener("click", () => pickAddressResult(item));
-    elements.addressResults.append(button);
-  });
-
-  elements.addressResults.hidden = false;
-}
-
-function pickResultName(item) {
-  const named = item.namedetails && (item.namedetails.name || item.namedetails["name:ko"]);
-  if (named) return named;
-  if (item.name) return item.name;
-  if (item.display_name) return item.display_name.split(",")[0].trim();
-  return "未命名地点";
-}
-
-function pickAddressResult(item) {
-  const latlng = { lat: Number(item.lat), lng: Number(item.lon) };
-  setDraftLocation(latlng);
-  if (map && kakaoSdk) {
-    map.setCenter(new kakaoSdk.maps.LatLng(latlng.lat, latlng.lng));
-    if (map.getLevel() > 3) map.setLevel(3);
-  }
-
-  if (!elements.name.value.trim()) {
-    elements.name.value = pickResultName(item);
-  }
-
-  elements.addressResults.hidden = true;
-  elements.name.focus();
-}
-
-function setPendingPhoto(file) {
-  if (pendingPhotoObjectUrl) {
-    URL.revokeObjectURL(pendingPhotoObjectUrl);
-    pendingPhotoObjectUrl = null;
-  }
-
-  if (!file) {
-    pendingPhotoBlob = null;
-    elements.photoPreview.innerHTML = "";
-    elements.photoPreview.hidden = true;
-    return;
-  }
-
-  pendingPhotoBlob = file;
-  pendingPhotoObjectUrl = URL.createObjectURL(file);
-  elements.photoPreview.innerHTML = "";
-  const img = document.createElement("img");
-  img.src = pendingPhotoObjectUrl;
-  img.alt = "待上传图片预览";
-  elements.photoPreview.append(img);
-  elements.photoPreview.hidden = false;
-}
-
-async function uploadFoodPhoto(file) {
-  const config = window.SUPABASE_CONFIG || {};
-  if (!config.url || !config.anonKey) {
-    throw new Error("缺少 Supabase 配置");
-  }
-
-  const blob = await resizeImageToBlob(file, PHOTO_MAX_DIM, PHOTO_QUALITY);
-  const path = `${crypto.randomUUID()}.jpg`;
-  const endpoint = `${config.url.replace(/\/$/, "")}/storage/v1/object/${STORAGE_BUCKET}/${path}`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      apikey: config.anonKey,
-      Authorization: `Bearer ${config.anonKey}`,
-      "Content-Type": blob.type || "image/jpeg",
-      "x-upsert": "false",
-    },
-    body: blob,
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `HTTP ${response.status}`);
-  }
-
-  return `${config.url.replace(/\/$/, "")}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
-}
-
-function resizeImageToBlob(file, maxDim, quality) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      try {
-        const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const width = Math.round(img.width * ratio);
-        const height = Math.round(img.height * ratio);
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            URL.revokeObjectURL(objectUrl);
-            blob ? resolve(blob) : reject(new Error("无法生成图片数据"));
-          },
-          "image/jpeg",
-          quality,
-        );
-      } catch (error) {
-        URL.revokeObjectURL(objectUrl);
-        reject(error);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("无法读取图片"));
-    };
-    img.src = objectUrl;
-  });
-}
-
-function render() {
-  renderMarkers();
-  renderList();
-  elements.count.textContent = getFilteredPlaces().length;
-}
-
-function getFilteredPlaces() {
-  const query = elements.search.value.trim().toLowerCase();
-  const filter = elements.filter.value;
-
-  return places.filter((place) => {
-    if (viewMode === "favorites" && !favoritePlaceIds.has(place.id)) return false;
-    if (viewMode === "mine" && !(Array.isArray(place.contributors) && place.contributors.includes(deviceId))) return false;
-
-    let matchesFilter;
-    if (filter === "all") {
-      matchesFilter = true;
-    } else if (filter === "__idol__") {
-      matchesFilter = Boolean(place.idol_name && place.idol_name.length);
-    } else {
-      matchesFilter = place.category === filter;
-    }
-    const searchable = [place.name, place.category, place.dish, place.note, place.idol_name]
-      .join(" ")
-      .toLowerCase();
-    return matchesFilter && searchable.includes(query);
-  });
-}
-
-function renderMarkers() {
+function drawFoodMarkers() {
   if (!map || !kakaoSdk) return;
-
-  const filteredPlaces = getFilteredPlaces();
-  const visibleIds = new Set(filteredPlaces.map((place) => place.id));
-
-  markers.forEach((marker, id) => {
-    if (!visibleIds.has(id)) {
-      marker.setMap(null);
-      markers.delete(id);
-    }
-  });
-
-  if (activePopup && !visibleIds.has(activePopup.placeId)) {
-    closePopup();
-  }
-
-  filteredPlaces.forEach((place) => {
-    if (markers.has(place.id)) return;
-
-    const color = categoryColors[place.category] || "#167a7f";
-    const pin = buildPinElement(color, place.category.slice(0, 1));
+  mapOverlays.forEach((overlay) => overlay.setMap(null));
+  mapOverlays = [];
+  cloudFoodItems.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)).forEach((item) => {
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "banfan-pin";
+    pin.innerHTML = `<span>${escapeHtml(item.category.slice(0, 1))}</span>`;
     pin.addEventListener("click", (event) => {
       event.stopPropagation();
-      openPopup(place);
+      openMapPopup(item);
     });
-
     const overlay = new kakaoSdk.maps.CustomOverlay({
-      position: new kakaoSdk.maps.LatLng(place.lat, place.lng),
+      position: new kakaoSdk.maps.LatLng(item.lat, item.lng),
       content: pin,
+      xAnchor: .5,
       yAnchor: 1,
-      xAnchor: 0.5,
       clickable: true,
     });
     overlay.setMap(map);
-    markers.set(place.id, overlay);
+    mapOverlays.push(overlay);
   });
 }
 
-function renderList() {
-  const filteredPlaces = getFilteredPlaces();
-  elements.list.dataset.view = viewMode;
-  elements.list.innerHTML = "";
+function openMapPopup(item) {
+  if (!map || !kakaoSdk) return;
+  if (activeMapPopup) activeMapPopup.setMap(null);
+  const popup = document.createElement("div");
+  popup.className = "map-popup";
+  popup.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category)} · ${item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评"}</span>`;
+  activeMapPopup = new kakaoSdk.maps.CustomOverlay({
+    position: new kakaoSdk.maps.LatLng(item.lat, item.lng),
+    content: popup,
+    xAnchor: .5,
+    yAnchor: 1.35,
+    clickable: true,
+    zIndex: 900,
+  });
+  activeMapPopup.setMap(map);
+}
 
-  if (!filteredPlaces.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    if (viewMode === "favorites") {
-      empty.textContent = "还没有收藏。点开任意美食点旁边的 ☆ 按钮收藏。";
-    } else if (viewMode === "mine") {
-      empty.textContent = "你还没上传过餐厅。在地图上点一下、填表提交即可。";
-    } else {
-      empty.textContent = "没有匹配的美食点。点击地图添加一个新的吧。";
-    }
-    elements.list.append(empty);
+function startAddingPlace() {
+  addingPlace = true;
+  selectedCoordinates = null;
+  elements.addPlaceBar.hidden = false;
+  elements.mapStatus.hidden = true;
+  elements.coordinateText.textContent = "尚未选择坐标";
+  showToast("请在地图上点一下新地点的位置。");
+}
+
+function cancelAddingPlace() {
+  addingPlace = false;
+  selectedCoordinates = null;
+  elements.addPlaceBar.hidden = true;
+  elements.mapStatus.hidden = false;
+  elements.placeName.value = "";
+  elements.placeNote.value = "";
+  if (draftOverlay) draftOverlay.setMap(null);
+  draftOverlay = null;
+}
+
+function selectPlaceCoordinates(lat, lng) {
+  selectedCoordinates = { lat, lng };
+  elements.coordinateText.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if (draftOverlay) draftOverlay.setMap(null);
+  const pin = document.createElement("div");
+  pin.className = "banfan-pin";
+  pin.innerHTML = "<span>＋</span>";
+  draftOverlay = new kakaoSdk.maps.CustomOverlay({
+    position: new kakaoSdk.maps.LatLng(lat, lng),
+    content: pin,
+    xAnchor: .5,
+    yAnchor: 1,
+  });
+  draftOverlay.setMap(map);
+  elements.placeName.focus();
+}
+
+async function saveNewPlace() {
+  const name = elements.placeName.value.trim();
+  const note = elements.placeNote.value.trim();
+  if (!selectedCoordinates) return showToast("请先在地图上选择位置。");
+  if (!name || !note) return showToast("请填写地点名称和一句真实推荐理由。");
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey) return showToast("云端尚未连接，暂时不能保存地点。");
+
+  elements.savePlace.disabled = true;
+  const payload = {
+    id: crypto.randomUUID(),
+    name,
+    category: elements.placeCategory.value,
+    dish: "",
+    rating: 0,
+    price: 0,
+    note,
+    lat: Number(selectedCoordinates.lat.toFixed(6)),
+    lng: Number(selectedCoordinates.lng.toFixed(6)),
+    image_url: "",
+    idol_name: "",
+    contributors: [getDeviceId()],
+    submission_count: 0,
+  };
+  try {
+    const response = await fetch(`${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`, {
+      method: "POST",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const rows = await response.json();
+    cloudFoodItems.unshift(mapFoodPlace(rows[0] || payload));
+    cancelAddingPlace();
+    drawFoodMarkers();
+    render();
+    showToast("新地点已加入美食地图。");
+  } catch (error) {
+    showToast("地点保存失败，请稍后再试。");
+    console.error("[map] insert failed", error);
+  } finally {
+    elements.savePlace.disabled = false;
+  }
+}
+
+function getDeviceId() {
+  const key = "banfan.device-id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function toggleFavorite(id) {
+  if (favoriteIds.has(id)) favoriteIds.delete(id);
+  else favoriteIds.add(id);
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favoriteIds]));
+  render();
+}
+
+function openReviewModal(item = null) {
+  const available = allCatalogItems();
+  if (!available.length) {
+    showToast("品目正在导入，完成后才能绑定评价。");
     return;
   }
+  selectedItemId = item ? item.id : null;
+  elements.itemInput.value = item ? item.title : "";
+  elements.modal.hidden = false;
+  document.body.classList.add("modal-open");
+  setTimeout(() => elements.itemInput.focus(), 0);
+}
 
-  filteredPlaces.forEach((place) => {
-    const card = elements.template.content.firstElementChild.cloneNode(true);
-    const thumb = card.querySelector(".place-thumb");
-    if (place.image_url) {
-      thumb.style.backgroundImage = `url(${JSON.stringify(place.image_url)})`;
-      thumb.dataset.empty = "false";
-    } else {
-      thumb.style.backgroundImage = "";
-      thumb.dataset.empty = "true";
-    }
-    const idolEl = card.querySelector(".place-idol");
-    if (place.idol_name) {
-      idolEl.textContent = `★ ${place.idol_name} 同款`;
-      idolEl.hidden = false;
-    } else {
-      idolEl.hidden = true;
-    }
-    card.querySelector(".place-title").textContent = place.name;
-    card.querySelector(".place-meta").textContent =
-      `${place.category} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}`;
-    card.querySelector(".place-note").textContent = place.note || "暂无推荐理由";
+function closeReviewModal() {
+  elements.modal.hidden = true;
+  document.body.classList.remove("modal-open");
+  selectedItemId = null;
+  clearPhotoPreview();
+  elements.form.reset();
+  elements.rating.value = "5";
+}
 
-    const favBtn = card.querySelector(".favorite-button");
-    const isFav = favoritePlaceIds.has(place.id);
-    favBtn.dataset.active = String(isFav);
-    favBtn.textContent = isFav ? "★" : "☆";
-    favBtn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleFavorite(place.id);
-      render();
-    });
-
-    card.querySelector(".place-main").addEventListener("click", () => focusPlace(place.id));
-    card.querySelector(".delete-button").addEventListener("click", () => deletePlace(place.id));
-
-    elements.list.append(card);
+function saveReview(event) {
+  event.preventDefault();
+  const title = elements.itemInput.value.trim();
+  const item = allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
+  if (!item) {
+    showToast("请从已有品目中选择；搜不到时提交“缺少品目”。");
+    elements.itemInput.focus();
+    return;
+  }
+  localReviews.unshift({
+    id: crypto.randomUUID(),
+    itemId: item.id,
+    rating: Number(elements.rating.value),
+    text: elements.reviewText.value.trim(),
+    hasPhoto: Boolean(elements.photo.files && elements.photo.files[0]),
+    createdAt: new Date().toISOString(),
   });
+  localStorage.setItem(REVIEWS_KEY, JSON.stringify(localReviews));
+  closeReviewModal();
+  render();
+  showToast("评价已保存到当前设备；账号和云端同步将在后端改造后接入。");
 }
 
-function focusPlace(id) {
-  const place = places.find((item) => item.id === id);
-  if (!place || !map || !kakaoSdk) return;
-
-  map.setCenter(new kakaoSdk.maps.LatLng(place.lat, place.lng));
-  if (map.getLevel() > 5) map.setLevel(5);
-  openPopup(place);
+function previewPhoto() {
+  clearPhotoPreview();
+  const file = elements.photo.files && elements.photo.files[0];
+  if (!file) return;
+  photoObjectUrl = URL.createObjectURL(file);
+  const image = document.createElement("img");
+  image.src = photoObjectUrl;
+  image.alt = "待发布照片预览";
+  elements.photoPreview.append(image);
+  elements.photoPreview.hidden = false;
 }
 
-function buildPinElement(color, label, options = {}) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "pin-wrapper";
-  if (options.draft) wrapper.classList.add("pin-wrapper-draft");
-  const inner = document.createElement("div");
-  inner.className = "pin-icon";
-  inner.style.background = color;
-  const text = document.createElement("span");
-  text.textContent = label;
-  inner.append(text);
-  wrapper.append(inner);
-  return wrapper;
+function clearPhotoPreview() {
+  if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+  photoObjectUrl = null;
+  elements.photoPreview.innerHTML = "";
+  elements.photoPreview.hidden = true;
 }
 
-function openPopup(place) {
-  if (!map || !kakaoSdk) return;
-  closePopup();
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "kakao-popup";
-  wrapper.innerHTML = `
-    ${place.image_url ? `<img class="map-popup-image" src="${escapeHtml(place.image_url)}" alt="${escapeHtml(place.name)}" loading="lazy" />` : ""}
-    ${place.idol_name ? `<span class="map-popup-idol">★ ${escapeHtml(place.idol_name)} 同款</span>` : ""}
-    <strong>${escapeHtml(place.name)}</strong>
-    <span>${escapeHtml(place.category)} · ${formatRating(place.rating)}${formatCount(place.submission_count)} · ${formatPrice(place.price)}</span>
-    <span class="map-popup-reason">${escapeHtml(place.note || "暂无推荐理由")}</span>
-    ${place.dish ? `<span class="map-popup-dish">推荐菜：${escapeHtml(place.dish)}</span>` : ""}
-  `;
-
-  const closeBtn = document.createElement("button");
-  closeBtn.type = "button";
-  closeBtn.className = "kakao-popup-close";
-  closeBtn.setAttribute("aria-label", "关闭");
-  closeBtn.textContent = "×";
-  closeBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    closePopup();
-  });
-  wrapper.append(closeBtn);
-
-  const tail = document.createElement("div");
-  tail.className = "kakao-popup-tail";
-  wrapper.append(tail);
-
-  const overlay = new kakaoSdk.maps.CustomOverlay({
-    position: new kakaoSdk.maps.LatLng(place.lat, place.lng),
-    content: wrapper,
-    yAnchor: 1.12,
-    xAnchor: 0.5,
-    clickable: true,
-    zIndex: 200,
-  });
-  overlay.setMap(map);
-  activePopup = overlay;
-  activePopup.placeId = place.id;
+function refreshSuggestions() {
+  elements.suggestions.innerHTML = allCatalogItems()
+    .map((item) => `<option value="${escapeHtml(item.title)}"></option>`)
+    .join("");
 }
 
-function closePopup() {
-  if (!activePopup) return;
-  activePopup.setMap(null);
-  activePopup = null;
+function allCatalogItems() {
+  return [...cloudFoodItems, ...Object.values(cloudCatalogItems).flat()];
 }
 
-function setBusy(isBusy) {
-  elements.form.querySelector("button[type='submit']").disabled = isBusy;
-  elements.reset.disabled = isBusy;
+function loadSet(key) {
+  try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); }
+  catch { return new Set(); }
 }
 
-function setStatus(message, mode) {
-  elements.syncStatus.textContent = message;
-  elements.syncStatus.dataset.mode = mode;
+function loadArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
 }
 
-function formatRating(rating) {
-  return rating ? `${rating.toFixed(2)}分` : "未评分";
+function showToast(message) {
+  elements.toast.textContent = message;
+  elements.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { elements.toast.hidden = true; }, 3200);
 }
 
-function formatCount(count) {
-  const n = Number(count || 1);
-  return n > 1 ? `（${n}人）` : "";
-}
-
-function formatPrice(price) {
-  return price ? `₩${price.toLocaleString("ko-KR")}` : "价格未知";
+function cssUrl(value) {
+  return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
 function escapeHtml(value) {

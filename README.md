@@ -1,56 +1,47 @@
-# 韩国美食地图
+# 伴饭 BanFan
 
-静态地图应用，支持点击地图添加美食点。默认使用浏览器本地数据；填写 Supabase 配置后，所有访问者会共享同一份云端数据。
+面向来韩国旅行和生活的中文用户的消费发现产品。
 
-## 文件说明
+当前网页包含四个频道：
 
-- `index.html`：页面入口
-- `styles.css`：界面样式
-- `app.js`：地图、添加、删除、搜索和 Supabase 同步逻辑
-- `config.js`：Supabase 配置，**会提交到仓库**（见下方安全说明）
-- `config.example.js`：模板，方便初始化或参考
-- `supabase-schema.sql`：Supabase 建表和公开读写策略
+- FOOD：餐厅与食品；支持榜单、地图、用户补充新地点。
+- BEAUTY：已接入首批 200 件 Olive Young 商品；平台导入，用户晒图评价。
+- LIFE：Daiso、便利店、家居与文具；平台导入，用户晒图评价。
+- FASHION：韩国品牌、单品与穿搭；平台导入，用户晒图评价。
 
-## 连接 Supabase
+## 产品数据规则
 
-1. 在 Supabase 新建项目。
-2. 打开 SQL Editor，执行 `supabase-schema.sql`。
-3. 在 Project Settings > API 复制 Project URL 和 anon public key。
-4. 编辑 `config.js`：
+- 商品品目由平台批量导入和去重，普通用户不能直接创建。
+- 美食地点允许用户补充，但需要审核。
+- 评价必须绑定一个已存在的商品品目或地点。
+- 搜不到商品时提交缺少品目申请，由平台审核后入库。
+- 地点坐标与地图供应商解耦；网页和小程序可以使用不同地图。
 
-```js
-window.SUPABASE_CONFIG = {
-  url: "https://YOUR_PROJECT_REF.supabase.co",
-  anonKey: "YOUR_SUPABASE_ANON_KEY",
-};
-```
+## 文件
 
-5. 提交并推送：
+- `index.html`：品目发现、FOOD 地图与评价界面。
+- `styles.css`：响应式界面。
+- `app.js`：云端商品/地点读取、搜索筛选、分页、收藏、评价原型、FOOD 地图和地点新增。
+- `config.js`：浏览器可用的 Supabase anon 配置与 Kakao JS key。
+- `migrations/`：分阶段 Supabase 数据结构与 RLS 迁移。
+- `supabase-schema.sql`：仅用于旧版 `food_places` 的初始安装，不再代表完整模型。
 
-```bash
-git add config.js
-git commit -m "Configure Supabase"
-git push
-```
+## 数据库升级
 
-刷新页面后，标题下方显示"云端同步已连接"即完成。
+迁移顺序和执行时机见 `migrations/README.md`。
 
-## 关于 anon key 的安全性
+不要在登录功能完成前执行
+`migrations/20260927_03_require_auth.sql`，否则当前匿名添加地点会停止工作。
 
-Supabase 的 **anon key 是设计成公开的**——它本来就要在浏览器里执行，任何访问者打开 DevTools 都能看到。真正的安全边界是 `supabase-schema.sql` 里的 Row Level Security (RLS) 策略，它决定 anon 角色能读/写/删什么数据。
-
-所以把 `config.js` 提交到公开仓库是 Supabase 官方推荐的做法。
-
-**千万不要** 把 `service_role` key 写进 `config.js`，那个是后端用的、有完全管理员权限的 key。
-
-## 本地运行
+## 本地预览
 
 ```bash
 python3 -m http.server 4173
 ```
 
-然后打开 `http://127.0.0.1:4173/`。
+打开 `http://127.0.0.1:4173/`。
 
-## 部署
+## 安全
 
-直接走 GitHub Pages：仓库 Settings > Pages > Source 选 `Deploy from a branch`，Branch 选 `main` / `/ (root)`，保存即可。
+Supabase anon key 本来就会暴露在浏览器中，真正的安全边界是 Row Level
+Security。永远不要把 service-role key 写入网页、移动应用或公开仓库。

@@ -1,149 +1,179 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>韩国美食地图</title>
-    <link rel="preconnect" href="https://dapi.kakao.com" />
-    <link rel="preconnect" href="https://t1.daumcdn.net" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <section class="map-panel" aria-label="韩国美食地图">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ff553e" />
+  <meta name="description" content="伴饭：给来韩国旅行和生活的中文用户使用的美食、美妆、生活与潮流品目指南。" />
+  <title>伴饭 · 来韩国照着选</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body data-channel="food">
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="伴饭首页">
+      <span class="brand-mark">伴</span>
+      <span><strong>伴饭</strong><small>BANFAN KOREA</small></span>
+    </a>
+    <label class="global-search" for="searchInput">
+      <span>⌕</span>
+      <input id="searchInput" type="search" placeholder="搜索品目、品牌、店铺或关键词" autocomplete="off" />
+    </label>
+    <div class="header-actions">
+      <button id="openFavoritesButton" class="quiet-button" type="button">♡ 收藏</button>
+      <button id="openReviewButton" class="review-button" type="button">＋ 晒图评价</button>
+    </div>
+  </header>
+
+  <main class="catalog-shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">KOREA, WITHOUT THE GUESSWORK</p>
+        <h1>来韩国，<br />照着选就行。</h1>
+        <p>商品先由平台建立完整品目库，再让真实用户补上照片、评分和体验；餐厅地点则允许用户共同补充。</p>
+      </div>
+      <aside class="product-rule">
+        <span>伴饭原则 01</span>
+        <strong>商品由平台导入<br />地点与体验由用户共建</strong>
+      </aside>
+    </section>
+
+    <nav class="category-launcher" aria-label="四大频道">
+      <button class="category-entry is-active" type="button" data-channel="food">
+        <span class="entry-number">01</span><span class="entry-icon">食</span>
+        <span class="entry-copy"><strong>美食</strong><small>FOOD · 餐厅 / 零食 / 饮料</small></span><span class="entry-arrow">↗</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="beauty">
+        <span class="entry-number">02</span><span class="entry-icon">妆</span>
+        <span class="entry-copy"><strong>美妆</strong><small>BEAUTY · OY / 护肤 / 彩妆</small></span><span class="entry-arrow">↗</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="life">
+        <span class="entry-number">03</span><span class="entry-icon">物</span>
+        <span class="entry-copy"><strong>生活</strong><small>LIFE · DAISO / 便利店 / 家居</small></span><span class="entry-arrow">↗</span>
+      </button>
+      <button class="category-entry" type="button" data-channel="fashion">
+        <span class="entry-number">04</span><span class="entry-icon">潮</span>
+        <span class="entry-copy"><strong>潮流</strong><small>FASHION · 品牌 / 穿搭 / 街区</small></span><span class="entry-arrow">↗</span>
+      </button>
+    </nav>
+
+    <section class="catalog-section">
+      <header class="catalog-header">
+        <div>
+          <p class="eyebrow" id="channelEyebrow">FOOD / 美食</p>
+          <h2 id="channelTitle">韩国美食品目</h2>
+          <p id="channelDescription">先看已有品目，再决定吃什么、买什么、去哪里。</p>
+        </div>
+        <div class="catalog-meta">
+          <span id="syncStatus">正在读取品目...</span>
+          <strong><span id="itemCount">0</span> ITEMS</strong>
+        </div>
+      </header>
+
+      <div class="catalog-toolbar">
+        <div class="filter-chips" id="filterChips" aria-label="品目筛选"></div>
+        <div class="toolbar-right">
+          <div class="view-switch" id="foodViewSwitch">
+            <button class="is-active" type="button" data-view="list">榜单</button>
+            <button type="button" data-view="map">地图</button>
+          </div>
+          <select id="sortSelect" aria-label="排序方式">
+            <option value="featured">综合</option><option value="rating">评分</option><option value="reviewed">评价数</option>
+          </select>
+        </div>
+      </div>
+
+      <section class="food-map-panel" id="foodMapPanel" hidden>
         <div id="map"></div>
-        <div class="map-toolbar" aria-label="地图工具">
-          <button class="icon-button" id="locateButton" type="button" title="定位到我附近">⌖</button>
-          <button class="icon-button" id="seoulButton" type="button" title="回到首尔">◎</button>
+        <div class="map-head">
+          <div><span>FOOD MAP</span><strong>韩国美食地图</strong></div>
+          <button id="startAddPlaceButton" type="button">＋ 添加新地点</button>
+        </div>
+        <div class="map-status" id="mapStatus">地图只在打开时加载</div>
+        <div class="add-place-bar" id="addPlaceBar" hidden>
+          <div class="add-place-copy"><strong>在地图上点一下位置</strong><span id="coordinateText">尚未选择坐标</span></div>
+          <input id="placeNameInput" placeholder="地点名称" />
+          <select id="placeCategoryInput"><option>韩餐</option><option>烤肉</option><option>街头小吃</option><option>咖啡甜品</option><option>海鲜</option><option>酒馆</option><option>日料</option><option>中餐</option><option>西餐</option></select>
+          <input id="placeNoteInput" placeholder="一句推荐理由" />
+          <button id="savePlaceButton" type="button">保存</button>
+          <button id="cancelAddPlaceButton" type="button">取消</button>
         </div>
       </section>
 
-      <aside class="control-panel" aria-label="美食点管理">
-        <header class="panel-header">
-          <div>
-            <p class="eyebrow">Korea Food Map</p>
-            <h1>韩国美食地图</h1>
-            <p class="sync-status" id="syncStatus">正在连接数据...</p>
-          </div>
-          <span class="count-pill" id="placeCount">0</span>
-        </header>
+      <div class="catalog-grid" id="catalogGrid"></div>
+      <div class="catalog-more" id="catalogMore" hidden>
+        <button id="loadMoreButton" type="button">继续加载</button>
+      </div>
+      <div class="catalog-empty" id="catalogEmpty" hidden>
+        <strong>这个分类的品目还没导入。</strong>
+        <span>品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
+      </div>
+    </section>
+  </main>
 
-        <div class="search-row">
-          <input id="searchInput" type="search" placeholder="搜索店名、地区、菜品" autocomplete="off" />
-          <select id="categoryFilter" aria-label="分类筛选">
-            <option value="all">全部</option>
-            <option value="__idol__">★ 爱豆同款</option>
-            <option value="韩餐">韩餐</option>
-            <option value="烤肉">烤肉</option>
-            <option value="街头小吃">街头小吃</option>
-            <option value="咖啡甜品">咖啡甜品</option>
-            <option value="海鲜">海鲜</option>
-            <option value="酒馆">酒馆</option>
-            <option value="日料">日料</option>
-            <option value="中餐">中餐</option>
-            <option value="西餐">西餐</option>
-          </select>
+  <button class="mobile-review-button" id="mobileReviewButton" type="button">＋ 晒图评价</button>
+
+  <div class="review-modal" id="reviewModal" hidden>
+    <button class="modal-backdrop" id="modalBackdrop" type="button" aria-label="关闭评价"></button>
+    <section class="review-sheet" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+      <header class="review-header">
+        <div><p class="eyebrow">ADD YOUR EXPERIENCE</p><h2 id="reviewTitle">晒图评价</h2></div>
+        <button id="closeReviewButton" class="close-button" type="button" aria-label="关闭">×</button>
+      </header>
+      <ol class="review-steps" aria-label="评价步骤">
+        <li class="is-active"><span>1</span>选择品目</li>
+        <li><span>2</span>晒图打分</li>
+        <li><span>3</span>写真实体验</li>
+      </ol>
+      <form id="reviewForm" class="review-form">
+        <label>你评价的是
+          <input id="reviewItemInput" list="catalogSuggestions" required placeholder="搜索现有品目，不需要自己创建" autocomplete="off" />
+          <datalist id="catalogSuggestions"></datalist>
+        </label>
+        <div class="form-row">
+          <label>评分
+            <select id="reviewRating" required>
+              <option value="5">5.0 · 非常值得</option><option value="4.5">4.5 · 推荐</option>
+              <option value="4">4.0 · 不错</option><option value="3">3.0 · 一般</option>
+              <option value="2">2.0 · 不太推荐</option><option value="1">1.0 · 避雷</option>
+            </select>
+          </label>
+          <label>实拍照片
+            <input id="reviewPhoto" type="file" accept="image/*" />
+          </label>
         </div>
-
-        <section class="address-search" aria-label="按地址或店名搜索">
-          <div class="address-search-row">
-            <input id="addressSearchInput" type="search" placeholder="输入韩语地址或店名定位（如：明洞 8길 27）" autocomplete="off" />
-            <button id="addressSearchButton" type="button">搜索</button>
-          </div>
-          <div id="addressSearchResults" class="address-results" hidden></div>
-        </section>
-
-        <form class="place-form" id="placeForm">
-          <div class="form-grid">
-            <label>
-              店名
-              <input id="nameInput" name="name" required placeholder="例如：明洞饺子" />
-            </label>
-            <label>
-              分类
-              <select id="categoryInput" name="category">
-                <option>韩餐</option>
-                <option>烤肉</option>
-                <option>街头小吃</option>
-                <option>咖啡甜品</option>
-                <option>海鲜</option>
-                <option>酒馆</option>
-                <option>日料</option>
-                <option>中餐</option>
-                <option>西餐</option>
-              </select>
-            </label>
-          </div>
-
-          <label class="idol-field">
-            ★ 爱豆同款（可选）
-            <input id="idolInput" name="idol" placeholder="哪个爱豆？比如 BTS RM、TWICE 나연——留空=非同款" autocomplete="off" />
-          </label>
-
-          <label>
-            推荐菜 / 关键词
-            <input id="dishInput" name="dish" placeholder="刀削面、猪蹄、鱼饼、拿铁..." />
-          </label>
-
-          <div class="form-grid">
-            <label>
-              评分
-              <input id="ratingInput" name="rating" type="number" min="1" max="5" step="0.5" value="4.5" />
-            </label>
-            <label>
-              人均 ₩
-              <input id="priceInput" name="price" type="number" min="0" step="1000" placeholder="15000" />
-            </label>
-          </div>
-
-          <label>
-            推荐理由
-            <textarea id="noteInput" name="note" rows="3" required placeholder="为什么推荐这家？必填——比如：刀切面汤底厚，吃完想喝光"></textarea>
-          </label>
-
-          <label class="photo-field">
-            照片（可选）
-            <input id="photoInput" name="photo" type="file" accept="image/*" />
-          </label>
-          <div id="photoPreview" class="photo-preview" hidden></div>
-
-          <div class="coordinate-row">
-            <span id="coordinateText">点击地图选择位置</span>
-            <button id="clearDraftButton" type="button">清空</button>
-          </div>
-
-          <button class="primary-button" type="submit">添加到地图</button>
-        </form>
-
-        <section class="list-section" aria-label="地点列表">
-          <div class="view-tabs" role="tablist">
-            <button type="button" class="view-tab" data-view="all" role="tab" aria-selected="true">全部</button>
-            <button type="button" class="view-tab" data-view="favorites" role="tab" aria-selected="false">★ 我的收藏</button>
-            <button type="button" class="view-tab" data-view="mine" role="tab" aria-selected="false">我上传的</button>
-            <button id="resetButton" type="button" class="reset-button" title="恢复示例">恢复</button>
-          </div>
-          <div class="place-list" id="placeList"></div>
-        </section>
-      </aside>
-    </main>
-
-    <template id="placeTemplate">
-      <article class="place-card">
-        <div class="place-thumb" data-empty="true" aria-hidden="true"></div>
-        <button class="place-main" type="button">
-          <span class="place-idol" hidden></span>
-          <span class="place-title"></span>
-          <span class="place-meta"></span>
-          <span class="place-note"></span>
-        </button>
-        <div class="place-actions">
-          <button class="favorite-button" type="button" data-active="false" aria-label="收藏" title="收藏">☆</button>
-          <button class="delete-button" type="button" title="删除">×</button>
+        <div id="reviewPhotoPreview" class="photo-preview" hidden></div>
+        <label>真实体验
+          <textarea id="reviewText" required rows="4" maxlength="500" placeholder="口味 / 肤感 / 耐用度 / 尺码……写你真正用过之后才知道的事"></textarea>
+        </label>
+        <p class="form-note">美妆、生活、潮流品目不能由用户直接新建；搜不到时提交“缺少品目”，由平台审核并入库。美食地点可在 FOOD 地图新增。</p>
+        <div class="form-actions">
+          <button id="missingItemButton" class="quiet-button" type="button">找不到这个品目</button>
+          <button class="submit-review" type="submit">发布评价</button>
         </div>
-      </article>
-    </template>
+      </form>
+    </section>
+  </div>
 
-    <script src="./config.js?v=20260521d"></script>
-    <script src="./app.js?v=20260521o"></script>
-  </body>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <template id="catalogCardTemplate">
+    <article class="catalog-card">
+      <div class="card-visual"><span class="card-index"></span><span class="card-glyph"></span></div>
+      <div class="card-body">
+        <span class="card-category"></span>
+        <h3 class="card-title"></h3>
+        <p class="card-note"></p>
+        <div class="card-meta"><span class="card-rating"></span><span class="card-reviews"></span></div>
+      </div>
+      <button class="card-favorite" type="button" aria-label="收藏">♡</button>
+      <div class="card-actions">
+        <a class="card-source" target="_blank" rel="noopener noreferrer">官网查看 ↗</a>
+        <button class="card-review" type="button">晒图评价 →</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="./config.js?v=20260927c"></script>
+  <script src="./app.js?v=20260927c"></script>
+</body>
 </html>
