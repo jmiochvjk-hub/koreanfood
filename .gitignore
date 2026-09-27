@@ -4,3 +4,4 @@ dist/
 .env
 .env.*
 .impeccable-cache/
+supabase/.temp/

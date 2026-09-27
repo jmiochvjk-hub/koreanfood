@@ -51,8 +51,9 @@
 `published` 并公开；命中规则的评价及照片会被删除，用户可以修改后重新提交。
 旧版本留在浏览器本机的评价仍会继续显示。
 
-自动审核由 `supabase/functions/moderate-review` 执行。生产环境必须在 Supabase
-Edge Function Secrets 中配置 `OPENAI_API_KEY`；密钥不能写入 `config.js` 或其他
+自动审核由 `supabase/functions/moderate-review` 执行，使用 DeepSeek 的
+`deepseek-flash` 同时检查文字和图片。生产环境必须在 Supabase Edge Function
+Secrets 中配置 `DEEPSEEK_API_KEY`；密钥不能写入 `config.js` 或其他
 浏览器可读取的文件。
 
 ## 本地预览
