@@ -246,6 +246,7 @@ function mapCatalogItem(item) {
     id: String(item.id),
     channel: item.channel,
     title: item.name_zh || item.name_ko || item.name_en || "未命名商品",
+    originalName: item.name_zh && item.name_ko ? item.name_ko : "",
     searchText: [item.name_zh, item.name_ko, item.name_en, item.brand_name_zh, item.brand_name_ko].filter(Boolean).join(" "),
     category: item.category_name_zh || "其他",
     note: `${brand}${price ? ` · ₩${price.toLocaleString("ko-KR")}` : ""}`,
@@ -374,6 +375,11 @@ function render() {
     card.dataset.kind = item.kind;
     card.querySelector(".card-category").textContent = item.category.toUpperCase();
     card.querySelector(".card-title").textContent = item.title;
+    const originalName = card.querySelector(".card-original");
+    if (item.originalName) {
+      originalName.textContent = item.originalName;
+      originalName.hidden = false;
+    }
     card.querySelector(".card-note").textContent = item.note;
     card.querySelector(".card-rating").textContent = item.rating ? `★ ${item.rating.toFixed(1)}` : "等待首评";
     card.querySelector(".card-reviews").textContent = item.reviewCount ? `${item.reviewCount} 条体验` : "0 条体验";

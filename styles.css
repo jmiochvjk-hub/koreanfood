@@ -228,6 +228,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .card-body { padding: 17px; }
 .card-category { color: var(--accent); font-size: 9px; font-weight: 950; letter-spacing: .13em; }
 .card-title { margin: 7px 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 21px; line-height: 1.2; }
+.card-original { display: -webkit-box; margin: -1px 0 8px; overflow: hidden; color: #8a847a; font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .card-note { display: -webkit-box; min-height: 42px; margin: 0 0 14px; overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .card-meta { display: flex; gap: 12px; color: var(--muted); font-size: 11px; }
 .card-rating { color: var(--ink); font-weight: 900; }

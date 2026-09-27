@@ -24,6 +24,12 @@ The checked-in SQL import is generated from this review file and is idempotent:
 migrations/20260927_04_import_oliveyoung_200.sql
 ```
 
+`oliveyoung-200-zh-review.csv` contains the Simplified Chinese display names.
+They are machine-assisted drafts with normalized official/common brand names;
+the Korean originals remain in the database and UI for in-store matching. Use
+`migrations/20260927_06_add_oliveyoung_chinese.sql` to apply them. Corrections
+should update both the review CSV and the SQL migration.
+
 Before a future refresh, preserve the previous CSV for audit, review large
 price/name changes, and verify that image hotlinks are still permitted by the
 retailer.

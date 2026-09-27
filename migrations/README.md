@@ -28,17 +28,22 @@ Run these files in Supabase SQL Editor in order.
    - Leaves barcodes pending instead of inventing values not published by the
      retailer.
 
-5. `20260927_05_tighten_catalog_grants.sql`
+5. `20260927_06_add_oliveyoung_chinese.sql`
+   - Adds Chinese-first display names for all 200 Olive Young seeds.
+   - Preserves Korean names for search and in-store identification.
+   - Marks translations as machine drafts so editors can review them later.
+
+6. `20260927_05_tighten_catalog_grants.sql`
    - Removes Supabase's broad default table grants from browser roles.
    - Re-grants only the operations used by the current application; RLS remains
      the primary authorization boundary.
 
-6. `20260927_verify.sql`
+7. `20260927_verify.sql`
    - Read-only checks for tables, RLS, policies, and legacy-place migration.
 
 ## Later, after authentication ships
 
-7. `20260927_03_require_auth.sql`
+8. `20260927_03_require_auth.sql`
    - Stops anonymous place creation.
    - Requires an authenticated owner for legacy place writes.
    - Do not run this file until the website and mobile app both attach a
