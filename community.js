@@ -11,6 +11,8 @@
     postsLoadError: false,
     postPhotoUrls: [],
     linkMap: new Map(),
+    linkSearchTimer: null,
+    linkSearchRequest: 0,
     activePost: null,
   };
 
@@ -66,6 +68,15 @@
   ui.closePost.addEventListener("click", closePostComposer);
   ui.cancelPost.addEventListener("click", closePostComposer);
   ui.postPhotos.addEventListener("change", previewPostPhotos);
+  ui.postLink.addEventListener("input", () => {
+    window.clearTimeout(state.linkSearchTimer);
+    const query = ui.postLink.value.trim();
+    if (!query) {
+      refreshPostLinkSuggestions();
+      return;
+    }
+    state.linkSearchTimer = window.setTimeout(() => searchPostLinkSuggestions(query), 220);
+  });
   ui.postForm.addEventListener("submit", submitPost);
   ui.postDetailBackdrop.addEventListener("click", closePostDetail);
   ui.closePostDetail.addEventListener("click", closePostDetail);
@@ -200,6 +211,26 @@
       option.value = label;
       ui.postLinkSuggestions.append(option);
     });
+  }
+
+  async function searchPostLinkSuggestions(query) {
+    if (typeof window.searchBanfanCatalog !== "function") return;
+    const requestId = ++state.linkSearchRequest;
+    try {
+      const items = await window.searchBanfanCatalog(query, 60);
+      if (requestId !== state.linkSearchRequest || ui.postLink.value.trim() !== query) return;
+      state.linkMap.clear();
+      ui.postLinkSuggestions.replaceChildren();
+      items.forEach((item) => {
+        const label = `${item.title} · ${CHANNEL_LABELS[item.channel] || "品目"} · ${item.brand || item.category || ""}`;
+        state.linkMap.set(label, item);
+        const option = document.createElement("option");
+        option.value = label;
+        ui.postLinkSuggestions.append(option);
+      });
+    } catch (error) {
+      console.error("[community] linked item search failed", error);
+    }
   }
 
   async function submitPost(event) {

@@ -40,7 +40,7 @@ async function sha256(value: string) {
 function queryTerms(question: string) {
   const aliases: Array<[RegExp, string[]]> = [
     [/一人食|一个人|独自|单人|혼밥/i, ["一人食", "一个人", "独自", "单人", "혼밥"]],
-    [/防晒|晒黑|紫外线|선크림|sun.?screen/i, ["防晒", "선크림", "sun", "紫外线"]],
+    [/防晒|晒黑|紫外线|선크림|sun.?screen/i, ["防晒", "선크림", "sunscreen", "紫外线"]],
     [/减脂|低卡|减肥|控糖|diet/i, ["减脂", "低卡", "低糖", "蛋白", "diet"]],
     [/敏感肌|敏感|刺激/i, ["敏感肌", "敏感", "温和", "低刺激"]],
     [/伴手礼|礼物|送人|手信/i, ["伴手礼", "礼物", "送人", "手信"]],
@@ -108,18 +108,34 @@ Deno.serve(async (request) => {
   await admin.from("qa_usage").insert({ requester_key: requesterKey });
 
   const terms = queryTerms(question);
-  const [catalogResult, placesResult, postsResult, reviewsResult] = await Promise.all([
-    admin.from("catalog_item_cards").select("id,channel,name_zh,name_ko,name_en,hero_image_url,price_krw,attributes,brand_name_zh,brand_name_ko,category_name_zh,rating_average,review_count").limit(500),
+  const catalogQueries = terms.slice(0, 6).map((term) => admin.rpc("search_catalog_items", {
+    search_term: term,
+    result_limit: 80,
+    result_offset: 0,
+  }));
+  const fallbackCatalogQuery = admin.from("catalog_item_cards")
+    .select("id,channel,name_zh,name_ko,name_en,hero_image_url,price_krw,attributes,brand_name_zh,brand_name_ko,category_name_zh,rating_average,review_count,source_review_count,source_rank")
+    .order("review_count", { ascending: false })
+    .order("source_review_count", { ascending: false })
+    .order("source_rank", { ascending: true })
+    .limit(120);
+  const [catalogResults, placesResult, postsResult, reviewsResult] = await Promise.all([
+    catalogQueries.length ? Promise.all(catalogQueries) : Promise.all([fallbackCatalogQuery]),
     admin.from("places").select("id,name_zh,name_ko,name_en,address_zh,address_ko,place_type,hero_image_url,city_code").eq("moderation_status", "published").limit(300),
     admin.from("community_post_cards").select("id,channel,title,body,linked_item_id,linked_place_id,cover_storage_path,photo_count,created_at").eq("moderation_status", "published").order("created_at", { ascending: false }).limit(150),
     admin.from("reviews").select("id,item_id,place_id,rating,body,created_at").eq("moderation_status", "published").order("created_at", { ascending: false }).limit(300),
   ]);
+  const catalogRows = new Map<string, Record<string, unknown>>();
+  catalogResults.forEach((result) => {
+    (result.data || []).forEach((row) => catalogRows.set(String(row.id), row as Record<string, unknown>));
+  });
 
   const candidates: Array<Record<string, unknown> & { score: number; promptText: string }> = [];
-  (catalogResult.data || []).forEach((row) => {
+  [...catalogRows.values()].forEach((row) => {
     const text = [row.name_zh, row.name_ko, row.name_en, row.brand_name_zh, row.brand_name_ko, row.category_name_zh, JSON.stringify(row.attributes || {})].join(" ");
     const match = textScore(text, terms);
-    const popularity = Math.min(2, Number(row.review_count || 0) / 10);
+    const popularity = Math.min(2, Number(row.review_count || 0) / 10)
+      + Math.min(1, Number(row.source_review_count || 0) / 1000);
     candidates.push({
       type: "item", id: row.id, channel: row.channel,
       title: row.name_zh || row.name_ko, subtitle: [row.brand_name_zh || row.brand_name_ko, row.category_name_zh].filter(Boolean).join(" · "),
@@ -145,11 +161,13 @@ Deno.serve(async (request) => {
     }
   });
 
-  const channelHint = /防晒|美妆|护肤|彩妆|敏感肌|olive|oy|선크림/i.test(question) ? "beauty"
+  const channelHint = /大创|daiso|다이소/i.test(question) ? "life"
+    : /olive\s*young|oy|橄榄杨|올리브영/i.test(question) ? "beauty"
+    : /防晒|美妆|护肤|彩妆|敏感肌|선크림/i.test(question) ? "beauty"
     : /穿搭|衣服|鞋|包|时尚|潮流/i.test(question) ? "fashion"
-    : /大创|daiso|家居|文具|生活/i.test(question) ? "life" : "food";
+    : /家居|文具|生活/i.test(question) ? "life" : "food";
   const hasExplicitChannel = /防晒|美妆|护肤|彩妆|敏感肌|olive|oy|선크림|穿搭|衣服|鞋|包|时尚|潮流|大创|daiso|家居|文具|生活|一人食|吃|餐厅|咖啡|便利店/i.test(question);
-  const requiredConcept = /防晒|晒黑|紫外线|선크림|sun.?screen/i.test(question) ? ["防晒", "선크림", "sun"]
+  const requiredConcept = /防晒|晒黑|紫外线|선크림|sun.?screen/i.test(question) ? ["防晒", "선크림", "sunscreen", "紫外线"]
     : /大创|daiso|다이소/i.test(question) ? ["daiso", "大创", "다이소"]
     : /olive\s*young|oy|橄榄杨|올리브영/i.test(question) ? ["olive young", "올리브영", "oy"] : [];
   const matchesConcept = (candidate: { promptText: string }) => !requiredConcept.length

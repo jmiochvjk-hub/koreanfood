@@ -4,6 +4,7 @@ const AUTH_SESSION_KEY = "banfan.auth.session";
 const SUPABASE_TABLE = "food_places";
 const CATALOG_VIEW = "catalog_item_cards";
 const PAGE_SIZE = 24;
+const CATALOG_BATCH_SIZE = 120;
 
 async function fetchWithTimeout(input, init = {}, timeoutMs = 20_000) {
   const controller = new AbortController();
@@ -42,7 +43,7 @@ const channelCatalog = {
     eyebrow: "潮流 · FASHION",
     title: "从品牌开始认识韩国风格",
     description: "用风格、预算和使用场景筛选品牌与单品。",
-    filters: ["全部", "韩国品牌", "基础款", "鞋包", "配饰"],
+    filters: ["全部", "韩国品牌", "基础款", "鞋履", "包袋", "配饰", "街头潮流"],
     glyph: "潮",
   },
 };
@@ -57,6 +58,7 @@ const elements = {
   count: document.querySelector("#itemCount"),
   filters: document.querySelector("#filterChips"),
   toolbar: document.querySelector("#catalogToolbar"),
+  openMissingItemFromCatalog: document.querySelector("#openMissingItemFromCatalogButton"),
   foodViewSwitch: document.querySelector("#foodViewSwitch"),
   foodMapPanel: document.querySelector("#foodMapPanel"),
   mapStatus: document.querySelector("#mapStatus"),
@@ -112,6 +114,17 @@ const elements = {
   reviewText: document.querySelector("#reviewText"),
   submitReview: document.querySelector("#submitReviewButton"),
   missingItem: document.querySelector("#missingItemButton"),
+  missingItemModal: document.querySelector("#missingItemModal"),
+  missingItemBackdrop: document.querySelector("#missingItemBackdrop"),
+  closeMissingItem: document.querySelector("#closeMissingItemButton"),
+  cancelMissingItem: document.querySelector("#cancelMissingItemButton"),
+  missingItemForm: document.querySelector("#missingItemForm"),
+  missingItemChannel: document.querySelector("#missingItemChannel"),
+  missingItemBrand: document.querySelector("#missingItemBrand"),
+  missingItemName: document.querySelector("#missingItemName"),
+  missingItemUrl: document.querySelector("#missingItemUrl"),
+  missingItemNote: document.querySelector("#missingItemNote"),
+  submitMissingItem: document.querySelector("#submitMissingItemButton"),
   detailModal: document.querySelector("#detailModal"),
   detailBackdrop: document.querySelector("#detailBackdrop"),
   closeDetail: document.querySelector("#closeDetailButton"),
@@ -143,6 +156,16 @@ let foodLoading = true;
 let catalogLoading = true;
 let cloudFoodItems = [];
 let cloudCatalogItems = { beauty: [], life: [], fashion: [] };
+let catalogTotals = { beauty: 0, life: 0, fashion: 0 };
+let catalogHasMore = { beauty: true, life: true, fashion: true };
+let catalogSearchResults = [];
+let catalogSearchLoading = false;
+let catalogSearchTimer = null;
+let catalogSearchRequest = 0;
+let pickerSearchTimer = null;
+let pickerSearchRequest = 0;
+let pickerSearchItems = [];
+let reviewSuggestionMap = new Map();
 let favoriteIds = loadSet(FAVORITES_KEY);
 let localReviews = loadArray(REVIEWS_KEY);
 let canonicalPlaceIds = new Map();
@@ -171,10 +194,18 @@ elements.search.addEventListener("input", () => {
   const hasQuery = Boolean(elements.search.value.trim());
   if (hasQuery && foodView === "map") foodView = "list";
   resetAndRender();
+  scheduleCatalogSearch(elements.search.value);
   if (hasQuery && !searchActive) elements.catalogSection.scrollIntoView({ behavior: "smooth", block: "start" });
   searchActive = hasQuery;
 });
-elements.loadMore.addEventListener("click", () => {
+elements.loadMore.addEventListener("click", async () => {
+  const loaded = cloudCatalogItems[currentChannel]?.length || 0;
+  if (!elements.search.value.trim() && currentChannel !== "food" && visibleLimit + PAGE_SIZE >= loaded && catalogHasMore[currentChannel]) {
+    elements.loadMore.disabled = true;
+    elements.loadMore.textContent = "正在加载…";
+    await loadCatalogPage(currentChannel);
+    elements.loadMore.disabled = false;
+  }
   visibleLimit += PAGE_SIZE;
   render();
 });
@@ -182,6 +213,7 @@ elements.foodViewSwitch.addEventListener("click", (event) => {
   const button = event.target.closest("[data-view]");
   if (button) showFoodView(button.dataset.view);
 });
+elements.openMissingItemFromCatalog.addEventListener("click", openMissingItemModal);
 elements.startAddPlace.addEventListener("click", () => {
   if (!map) {
     loadFoodMap();
@@ -246,17 +278,32 @@ elements.detailReview.addEventListener("click", () => {
   openReviewModal(item);
 });
 elements.photo.addEventListener("change", previewPhoto);
-elements.missingItem.addEventListener("click", () => {
-  showToast("品目补充入口正在准备；商品仍由平台审核后统一入库。");
+elements.itemInput.addEventListener("input", () => {
+  window.clearTimeout(pickerSearchTimer);
+  const query = elements.itemInput.value.trim();
+  if (query.length < 1) {
+    pickerSearchItems = [];
+    refreshSuggestions();
+    return;
+  }
+  pickerSearchTimer = window.setTimeout(() => searchReviewSuggestions(query), 220);
 });
+elements.missingItem.addEventListener("click", openMissingItemModal);
+elements.closeMissingItem.addEventListener("click", closeMissingItemModal);
+elements.cancelMissingItem.addEventListener("click", closeMissingItemModal);
+elements.missingItemBackdrop.addEventListener("click", closeMissingItemModal);
+elements.missingItemForm.addEventListener("submit", submitMissingItemRequest);
 elements.form.addEventListener("submit", saveReview);
 document.addEventListener("keydown", (event) => {
   const activeModal = !elements.authModal.hidden
     ? elements.authModal
-    : (!elements.modal.hidden ? elements.modal : (!elements.detailModal.hidden ? elements.detailModal : null));
+    : (!elements.missingItemModal.hidden
+      ? elements.missingItemModal
+      : (!elements.modal.hidden ? elements.modal : (!elements.detailModal.hidden ? elements.detailModal : null)));
   if (!activeModal) return;
   if (event.key === "Escape") {
     if (activeModal === elements.authModal) closeAuthModal();
+    else if (activeModal === elements.missingItemModal) closeMissingItemModal();
     else if (activeModal === elements.modal) closeReviewModal();
     else closeDetailModal();
     return;
@@ -678,24 +725,9 @@ async function loadCatalogItems() {
     return;
   }
 
-  const fields = [
-    "id", "channel", "item_type", "name_zh", "name_ko", "name_en",
-    "hero_image_url", "price_krw", "attributes", "brand_name_zh",
-    "brand_name_ko", "category_name_zh", "rating_average", "review_count",
-  ].join(",");
-  const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${CATALOG_VIEW}?select=${fields}&channel=in.(beauty,life,fashion)&limit=1000`;
-
   try {
-    const response = await fetchWithTimeout(endpoint, { headers: supabaseHeaders() });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const rows = await response.json();
     cloudCatalogItems = { beauty: [], life: [], fashion: [] };
-    rows.map(mapCatalogItem).forEach((item) => {
-      if (cloudCatalogItems[item.channel]) cloudCatalogItems[item.channel].push(item);
-    });
-    Object.values(cloudCatalogItems).forEach((items) => {
-      items.sort((a, b) => a.featuredOrder - b.featuredOrder);
-    });
+    await Promise.all(["beauty", "life", "fashion"].map((channel) => loadCatalogPage(channel)));
     if (currentChannel !== "food") updateSyncStatus();
   } catch (error) {
     console.error("[catalog] product load failed", error);
@@ -705,10 +737,110 @@ async function loadCatalogItems() {
   }
 }
 
+function catalogFields() {
+  return [
+    "id", "channel", "item_type", "name_zh", "name_ko", "name_en",
+    "hero_image_url", "price_krw", "attributes", "brand_name_zh",
+    "brand_name_ko", "category_name_zh", "rating_average", "review_count",
+    "source_rank", "source_review_count", "source_rating",
+  ].join(",");
+}
+
+async function loadCatalogPage(channel) {
+  if (!cloudCatalogItems[channel] || !catalogHasMore[channel]) return;
+  const config = window.SUPABASE_CONFIG || {};
+  const offset = cloudCatalogItems[channel].length;
+  const endpoint = new URL(`${config.url.replace(/\/$/, "")}/rest/v1/${CATALOG_VIEW}`);
+  endpoint.searchParams.set("select", catalogFields());
+  endpoint.searchParams.set("channel", `eq.${channel}`);
+  endpoint.searchParams.set("order", "review_count.desc,source_review_count.desc,source_rank.asc,name_zh.asc");
+  endpoint.searchParams.set("limit", String(CATALOG_BATCH_SIZE));
+  endpoint.searchParams.set("offset", String(offset));
+  const response = await fetchWithTimeout(endpoint, {
+    headers: { ...supabaseHeaders(), Prefer: "count=exact" },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const rows = await response.json();
+  const known = new Set(cloudCatalogItems[channel].map((item) => item.id));
+  rows.map(mapCatalogItem).forEach((item) => {
+    if (!known.has(item.id)) cloudCatalogItems[channel].push(item);
+  });
+  const total = Number((response.headers.get("content-range") || "").split("/")[1]);
+  if (Number.isFinite(total)) catalogTotals[channel] = total;
+  else catalogTotals[channel] = Math.max(catalogTotals[channel], cloudCatalogItems[channel].length);
+  catalogHasMore[channel] = cloudCatalogItems[channel].length < catalogTotals[channel] && rows.length === CATALOG_BATCH_SIZE;
+}
+
+function scheduleCatalogSearch(rawQuery) {
+  window.clearTimeout(catalogSearchTimer);
+  const query = rawQuery.trim();
+  if (!query) {
+    catalogSearchResults = [];
+    catalogSearchLoading = false;
+    catalogSearchRequest += 1;
+    render();
+    return;
+  }
+  catalogSearchLoading = true;
+  render();
+  catalogSearchTimer = window.setTimeout(() => loadCatalogSearch(query), 260);
+}
+
+async function loadCatalogSearch(query) {
+  const requestId = ++catalogSearchRequest;
+  const config = window.SUPABASE_CONFIG || {};
+  try {
+    const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/rest/v1/rpc/search_catalog_items`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ search_term: query, result_limit: 120, result_offset: 0 }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const rows = await response.json();
+    if (requestId !== catalogSearchRequest || elements.search.value.trim() !== query) return;
+    catalogSearchResults = rows.map(mapCatalogItem);
+  } catch (error) {
+    if (requestId === catalogSearchRequest) {
+      catalogSearchResults = [];
+      console.error("[catalog] search failed", error);
+    }
+  } finally {
+    if (requestId === catalogSearchRequest) {
+      catalogSearchLoading = false;
+      render();
+    }
+  }
+}
+
+async function searchCatalogItems(query, limit = 60) {
+  const config = window.SUPABASE_CONFIG || {};
+  if (!config.url || !config.anonKey || !query.trim()) return [];
+  const response = await fetchWithTimeout(`${config.url.replace(/\/$/, "")}/rest/v1/rpc/search_catalog_items`, {
+    method: "POST",
+    headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ search_term: query.trim(), result_limit: Math.min(Math.max(limit, 1), 120), result_offset: 0 }),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()).map(mapCatalogItem);
+}
+window.searchBanfanCatalog = searchCatalogItems;
+
+async function searchReviewSuggestions(query) {
+  const requestId = ++pickerSearchRequest;
+  try {
+    const items = await searchCatalogItems(query, 60);
+    if (requestId !== pickerSearchRequest || elements.itemInput.value.trim() !== query) return;
+    pickerSearchItems = items;
+    refreshSuggestions();
+  } catch (error) {
+    console.error("[catalog] review picker search failed", error);
+  }
+}
+
 function hydrateHeroShowcase() {
   const featured = [...(cloudCatalogItems.beauty || [])]
     .filter((item) => item.imageUrl)
-    .sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating || a.featuredOrder - b.featuredOrder)
+    .sort((a, b) => b.reviewCount - a.reviewCount || b.sourceReviewCount - a.sourceReviewCount || b.rating - a.rating || a.featuredOrder - b.featuredOrder)
     .slice(0, elements.heroSlots.length);
   elements.heroSlots.forEach((slot, index) => {
     const item = featured[index];
@@ -748,9 +880,11 @@ function mapCatalogItem(item) {
     glyph: brand.slice(0, 1),
     rating: Number(item.rating_average || 0),
     reviewCount: Math.max(0, Number(item.review_count || 0)),
+    sourceReviewCount: Math.max(0, Number(item.source_review_count || attributes.source_review_count || 0)),
+    sourceRating: Math.max(0, Number(item.source_rating || attributes.source_rating || 0)),
     imageUrl: item.hero_image_url || "",
     sourceUrl: attributes.source_url || "",
-    featuredOrder: listOrder + Number(attributes.source_rank || 999),
+    featuredOrder: listOrder + Number(item.source_rank || attributes.source_rank || 999),
     kind: "product",
   };
 }
@@ -821,8 +955,8 @@ function updateSyncStatus() {
     elements.syncStatus.textContent = foodLoading ? "正在读取地点..." : cloudFoodItems.length ? "按评价数排序 · 云端地点" : "地点库暂时不可用";
     return;
   }
-  const count = cloudCatalogItems[currentChannel]?.length || 0;
-  elements.syncStatus.textContent = catalogLoading ? "正在读取商品..." : count ? `按评价数排序 · ${count} 件` : "该频道等待首批导入";
+  const count = catalogTotals[currentChannel] || cloudCatalogItems[currentChannel]?.length || 0;
+  elements.syncStatus.textContent = catalogLoading ? "正在读取商品..." : count ? `按评价数排序 · ${count.toLocaleString("zh-CN")} 件` : "该频道等待首批导入";
 }
 
 function renderFilters() {
@@ -836,14 +970,14 @@ function currentItems() {
   const query = elements.search.value.trim().toLowerCase();
   const searchingAll = Boolean(query);
   const imported = cloudCatalogItems[currentChannel] || [];
-  const source = searchingAll ? allCatalogItems() : currentChannel === "food" ? cloudFoodItems : imported;
+  const source = searchingAll ? [...cloudFoodItems, ...catalogSearchResults] : currentChannel === "food" ? cloudFoodItems : imported;
   const reviewed = applyLocalReviewStats(source);
   let items = reviewed.filter((item) => {
     if (favoritesOnly && !favoriteIds.has(item.id)) return false;
     if (!searchingAll && activeFilter !== "全部" && item.category !== activeFilter) return false;
     return [item.title, item.category, item.note, item.searchText || ""].join(" ").toLowerCase().includes(query);
   });
-  items.sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating || (a.featuredOrder || 0) - (b.featuredOrder || 0));
+  items.sort((a, b) => b.reviewCount - a.reviewCount || Number(b.sourceReviewCount || 0) - Number(a.sourceReviewCount || 0) || b.rating - a.rating || (a.featuredOrder || 0) - (b.featuredOrder || 0));
   return items;
 }
 
@@ -870,7 +1004,7 @@ function applyLocalReviewStats(items) {
 function render() {
   const query = elements.search.value.trim();
   const searchingAll = Boolean(query);
-  const loading = searchingAll ? foodLoading || catalogLoading : currentChannel === "food" ? foodLoading : catalogLoading;
+  const loading = searchingAll ? catalogSearchLoading : currentChannel === "food" ? foodLoading : catalogLoading;
   if (searchingAll) {
     elements.eyebrow.textContent = "全站搜索 · SEARCH";
     elements.title.textContent = `“${query}”`;
@@ -885,6 +1019,7 @@ function render() {
   }
   elements.toolbar.hidden = searchingAll;
   elements.foodViewSwitch.hidden = searchingAll || currentChannel !== "food";
+  elements.openMissingItemFromCatalog.hidden = searchingAll || currentChannel === "food";
   elements.catalogSection.setAttribute("aria-busy", String(loading));
   elements.loading.hidden = !loading;
   if (loading) {
@@ -897,7 +1032,10 @@ function render() {
   }
 
   const items = currentItems();
-  elements.count.textContent = items.length;
+  const total = !searchingAll && !favoritesOnly && activeFilter === "全部" && currentChannel !== "food"
+    ? catalogTotals[currentChannel] || items.length
+    : items.length;
+  elements.count.textContent = Number(total).toLocaleString("zh-CN");
   elements.grid.innerHTML = "";
   elements.grid.hidden = false;
   elements.empty.hidden = items.length > 0;
@@ -962,9 +1100,10 @@ function render() {
     openButton.addEventListener("click", () => openDetailModal(item));
     elements.grid.append(card);
   });
-  const hasMore = (searchingAll || currentChannel !== "food") && visibleItems.length < items.length;
+  const hasRemoteMore = !searchingAll && currentChannel !== "food" && catalogHasMore[currentChannel];
+  const hasMore = (searchingAll || currentChannel !== "food") && (visibleItems.length < items.length || hasRemoteMore);
   elements.more.hidden = !hasMore;
-  elements.loadMore.textContent = hasMore ? `继续加载 · ${visibleItems.length} / ${items.length}` : "继续加载";
+  elements.loadMore.textContent = hasMore ? `继续加载 · ${visibleItems.length} / ${Number(total).toLocaleString("zh-CN")}` : "继续加载";
   refreshSuggestions();
   syncFoodViewVisibility();
 }
@@ -1191,6 +1330,8 @@ function selectPlaceCoordinates(lat, lng) {
 
 async function saveNewPlace() {
   if (!requireUser()) return;
+  await refreshAuthSessionIfNeeded();
+  if (!authSession?.access_token) return showToast("登录状态已失效，请重新登录后再试。");
   const name = elements.placeName.value.trim();
   const note = elements.placeNote.value.trim();
   if (!selectedCoordinates) return showToast("请先在地图上选择位置。");
@@ -1199,52 +1340,53 @@ async function saveNewPlace() {
   if (!config.url || !config.anonKey) return showToast("云端尚未连接，暂时不能保存地点。");
 
   elements.savePlace.disabled = true;
+  elements.savePlace.textContent = "自动审核中…";
   const payload = {
-    id: crypto.randomUUID(),
     name,
     category: elements.placeCategory.value,
-    dish: "",
-    rating: 0,
-    price: 0,
     note,
     lat: Number(selectedCoordinates.lat.toFixed(6)),
     lng: Number(selectedCoordinates.lng.toFixed(6)),
-    image_url: "",
-    idol_name: "",
-    contributors: [getDeviceId()],
-    submission_count: 0,
   };
   try {
-    const endpoint = `${config.url.replace(/\/$/, "")}/rest/v1/${SUPABASE_TABLE}`;
-    const userId = authSession?.user?.id || parseJwt(authSession?.access_token || "").sub || "";
-    const response = await fetch(endpoint, {
+    const endpoint = `${config.url.replace(/\/$/, "")}/functions/v1/moderate-place-submission`;
+    const response = await fetchWithTimeout(endpoint, {
       method: "POST",
-      headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
-      body: JSON.stringify({ ...payload, created_by: userId }),
-    });
-    if (!response.ok) throw new Error(await response.text());
-    const rows = await response.json();
-    cloudFoodItems.unshift(mapFoodPlace(rows[0] || payload));
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }, 45_000);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.code || `HTTP_${response.status}`);
+    if (result.status === "rejected") {
+      showToast("这个地点没有通过自动检查，请确认名称和推荐理由后重试。");
+      return;
+    }
+    if (result.status === "duplicate") {
+      showToast("地图里已经有这个地点，不需要重复添加。");
+      return;
+    }
+    if (!result.place) throw new Error("PLACE_MISSING");
+    cloudFoodItems.unshift(mapFoodPlace(result.place));
+    if (result.place.id && result.canonicalPlaceId) {
+      canonicalPlaceIds.set(String(result.place.id), String(result.canonicalPlaceId));
+      cloudFoodItems[0].canonicalPlaceId = String(result.canonicalPlaceId);
+    }
     cancelAddingPlace();
     drawFoodMarkers();
     render();
-    showToast("新地点已提交到美食地图。 ");
+    showToast("新地点已通过 DeepSeek 检查并加入美食地图。");
   } catch (error) {
-    showToast("地点保存失败，请稍后再试。");
+    const code = String(error?.message || "");
+    showToast(code === "RATE_LIMITED"
+      ? "今天新增的地点有点多，请明天再试。"
+      : code.includes("MODERATION") || code.includes("AbortError")
+        ? "DeepSeek 暂时繁忙，地点尚未公开，请稍后重试。"
+        : "地点保存失败，请稍后再试。");
     console.error("[map] insert failed", error);
   } finally {
     elements.savePlace.disabled = false;
+    elements.savePlace.textContent = "保存";
   }
-}
-
-function getDeviceId() {
-  const key = "banfan.device-id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
 }
 
 function toggleFavorite(item) {
@@ -1569,11 +1711,147 @@ function closeReviewModal() {
   elements.rating.value = "5";
 }
 
+function openMissingItemModal() {
+  if (!requireUser()) return;
+  if (!elements.modal.hidden) closeReviewModal();
+  elements.missingItemChannel.value = currentChannel === "life" || currentChannel === "fashion" ? currentChannel : "beauty";
+  activateModal(elements.missingItemModal, elements.missingItemName);
+}
+
+function closeMissingItemModal() {
+  deactivateModal(elements.missingItemModal);
+  elements.missingItemForm.reset();
+  elements.missingItemChannel.value = currentChannel === "life" || currentChannel === "fashion" ? currentChannel : "beauty";
+  elements.submitMissingItem.disabled = false;
+  elements.submitMissingItem.textContent = "提交并自动审核";
+}
+
+function isPublicHttpsUrl(value) {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    if (hostname === "localhost" || hostname.endsWith(".local")) return false;
+    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)) return false;
+    return hostname !== "::1";
+  } catch {
+    return false;
+  }
+}
+
+async function submitMissingItemRequest(event) {
+  event.preventDefault();
+  if (!requireUser()) return;
+  await refreshAuthSessionIfNeeded();
+  if (!authSession?.access_token) {
+    showToast("登录状态已失效，请重新登录后再试。");
+    return;
+  }
+  const channel = elements.missingItemChannel.value;
+  const brand = elements.missingItemBrand.value.trim();
+  const itemName = elements.missingItemName.value.trim();
+  const evidenceUrl = elements.missingItemUrl.value.trim();
+  const note = elements.missingItemNote.value.trim();
+  if (!isPublicHttpsUrl(evidenceUrl)) {
+    showToast("请填写可公开访问的 https 商品链接。");
+    elements.missingItemUrl.focus();
+    return;
+  }
+
+  const config = window.SUPABASE_CONFIG || {};
+  const baseUrl = config.url?.replace(/\/$/, "") || "";
+  const userId = authSession.user?.id || parseJwt(authSession.access_token).sub || "";
+  if (!baseUrl || !config.anonKey || !userId) {
+    showToast("商品库暂时没有连接，请稍后再试。");
+    return;
+  }
+
+  elements.submitMissingItem.disabled = true;
+  elements.submitMissingItem.textContent = "正在提交…";
+  try {
+    const createResponse = await fetchWithTimeout(`${baseUrl}/rest/v1/missing_item_requests?select=id`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: userId,
+        channel,
+        brand_text: brand,
+        item_name: itemName,
+        evidence_url: evidenceUrl,
+        note,
+        status: "pending",
+      }),
+    });
+    let requestId = "";
+    if (createResponse.status === 409) {
+      const existingUrl = new URL(`${baseUrl}/rest/v1/missing_item_requests`);
+      existingUrl.searchParams.set("select", "id");
+      existingUrl.searchParams.set("user_id", `eq.${userId}`);
+      existingUrl.searchParams.set("channel", `eq.${channel}`);
+      existingUrl.searchParams.set("brand_text", `eq.${brand}`);
+      existingUrl.searchParams.set("item_name", `eq.${itemName}`);
+      existingUrl.searchParams.set("status", "eq.pending");
+      existingUrl.searchParams.set("limit", "1");
+      const existingResponse = await fetchWithTimeout(existingUrl, { headers: supabaseHeaders() });
+      const existingRows = existingResponse.ok ? await existingResponse.json() : [];
+      requestId = existingRows?.[0]?.id || "";
+      if (!requestId) throw new Error("DUPLICATE_REQUEST");
+    } else {
+      if (!createResponse.ok) throw new Error(`CREATE_HTTP_${createResponse.status}`);
+      const rows = await createResponse.json();
+      requestId = rows?.[0]?.id || "";
+    }
+    if (!requestId) throw new Error("REQUEST_ID_MISSING");
+
+    elements.submitMissingItem.textContent = "DeepSeek 审核中…";
+    const moderationResponse = await fetchWithTimeout(`${baseUrl}/functions/v1/moderate-item-request`, {
+      method: "POST",
+      headers: { ...supabaseHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId }),
+    }, 45_000);
+    const result = await moderationResponse.json().catch(() => ({}));
+    if (!moderationResponse.ok) {
+      if (moderationResponse.status === 429) throw new Error("RATE_LIMITED");
+      throw new Error(result.code || `MODERATION_HTTP_${moderationResponse.status}`);
+    }
+    if (result.status === "rejected") {
+      showToast("这次申请未通过，请确认它是具体商品并提供可靠链接。");
+      return;
+    }
+    closeMissingItemModal();
+    if (result.status === "merged") {
+      showToast(`商品库里已经有“${result.name || itemName}”，可以直接搜索并评价。`);
+    } else {
+      catalogHasMore[channel] = true;
+      elements.search.value = String(result.name || itemName);
+      searchActive = true;
+      await loadCatalogSearch(elements.search.value);
+      render();
+      showToast(`“${result.name || itemName}”已通过审核并加入商品库。`);
+    }
+  } catch (error) {
+    const code = String(error?.message || "");
+    const message = code === "DUPLICATE_REQUEST"
+      ? "相同商品已经在审核中，不需要重复提交。"
+      : code === "RATE_LIMITED"
+        ? "今天提交得有点多，请明天再试。"
+        : code.includes("MODERATION") || code.includes("AbortError")
+          ? "申请已收下，DeepSeek 暂时繁忙；稍后重新提交会继续审核。"
+          : "新增商品申请失败，请检查链接后重试。";
+    showToast(message);
+    console.warn("[catalog] missing item request failed", error);
+  } finally {
+    elements.submitMissingItem.disabled = false;
+    elements.submitMissingItem.textContent = "提交并自动审核";
+  }
+}
+
 async function saveReview(event) {
   event.preventDefault();
   if (!requireUser()) return;
   const title = elements.itemInput.value.trim();
-  const item = allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
+  const item = reviewSuggestionMap.get(title)
+    || allCatalogItems().find((candidate) => candidate.title.toLowerCase() === title.toLowerCase());
   if (!item) {
     showToast("请从已有品目中选择；缺少的商品需由平台审核后入库。");
     elements.itemInput.focus();
@@ -1787,13 +2065,22 @@ function clearPhotoPreview() {
 }
 
 function refreshSuggestions() {
-  elements.suggestions.innerHTML = allCatalogItems()
-    .map((item) => `<option value="${escapeHtml(item.title)}"></option>`)
-    .join("");
+  reviewSuggestionMap = new Map();
+  const items = new Map();
+  [...allCatalogItems(), ...pickerSearchItems].forEach((item) => items.set(`${item.kind}:${item.id}`, item));
+  elements.suggestions.innerHTML = [...items.values()].map((item) => {
+    const suffix = item.kind === "product" ? item.brand : item.category;
+    const label = suffix ? `${item.title} · ${suffix}` : item.title;
+    reviewSuggestionMap.set(label, item);
+    return `<option value="${escapeHtml(label)}"></option>`;
+  }).join("");
 }
 
 function allCatalogItems() {
-  return [...cloudFoodItems, ...Object.values(cloudCatalogItems).flat()];
+  const unique = new Map();
+  [...cloudFoodItems, ...Object.values(cloudCatalogItems).flat(), ...catalogSearchResults, ...pickerSearchItems]
+    .forEach((item) => unique.set(`${item.kind}:${item.id}`, item));
+  return [...unique.values()];
 }
 
 function loadSet(key) {

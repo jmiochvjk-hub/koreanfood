@@ -74,7 +74,7 @@
       <div class="hero-lookbook" aria-label="本周精选商品">
         <button class="lookbook-tile lookbook-main" type="button" data-channel="beauty" data-hero-slot="0">
           <span class="lookbook-media"><img class="hero-product-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" decoding="async" fetchpriority="high" hidden /><span class="lookbook-placeholder">OY</span></span>
-          <span class="lookbook-caption"><strong class="hero-product-title">Olive Young 编辑选</strong><small class="hero-product-meta">200 件商品已经入库</small></span>
+          <span class="lookbook-caption"><strong class="hero-product-title">Olive Young 编辑选</strong><small class="hero-product-meta">3,000 件商品已经入库</small></span>
         </button>
         <button class="lookbook-tile" type="button" data-channel="beauty" data-hero-slot="1">
           <span class="lookbook-media"><img class="hero-product-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" loading="lazy" decoding="async" hidden /><span class="lookbook-placeholder">01</span></span>
@@ -103,6 +103,7 @@
       <div class="catalog-toolbar" id="catalogToolbar">
         <div class="filter-chips" id="filterChips" aria-label="品目筛选"></div>
         <div class="toolbar-right">
+          <button id="openMissingItemFromCatalogButton" class="quiet-button" type="button" hidden>申请新增商品</button>
           <div class="view-switch" id="foodViewSwitch" aria-label="美食查看方式">
             <button class="is-active" type="button" data-view="list" aria-pressed="true">榜单</button>
             <button type="button" data-view="map" aria-pressed="false">地图</button>
@@ -141,7 +142,7 @@
       </section>
       <div class="catalog-empty" id="catalogEmpty" hidden>
         <strong id="emptyTitle">这个分类的品目还没导入。</strong>
-        <span id="emptyDescription">品目应该由平台批量导入，不让用户手动创建。下一步接入数据源后会直接出现在这里。</span>
+        <span id="emptyDescription">可以先逛其他频道；登录后也能提交缺少的商品，自动审核通过就会入库。</span>
         <div class="empty-actions" id="emptyActions">
           <button class="secondary-button" type="button" data-channel="food">先看美食</button>
           <button class="primary-button" type="button" data-channel="beauty">查看美妆</button>
@@ -224,8 +225,8 @@
         <ul>
           <li>评价必须包含真实照片</li>
           <li>社区图文至少包含一张照片</li>
-          <li>商品评价绑定已有品目</li>
-          <li>新地点仅开放在美食地图补充</li>
+          <li>缺少的商品可以申请新增</li>
+          <li>新地点可在美食地图补充</li>
         </ul>
       </div>
       <div class="auth-action">
@@ -356,10 +357,48 @@
         <label>真实体验
           <textarea id="reviewText" required minlength="10" rows="4" maxlength="500" placeholder="至少 10 个字：口味 / 肤感 / 耐用度 / 尺码……"></textarea>
         </label>
-        <p class="form-note">提交后会由 DeepSeek 自动检查文字和实拍中的色情、暴力内容；正常评价会立即发布，违规上传不会保留。美食地点可在 FOOD 地图新增。</p>
+        <p class="form-note">提交后会由 DeepSeek 自动检查文字和实拍中的色情、暴力内容；正常评价会立即发布，违规上传不会保留。找不到商品时，可以先申请新增。</p>
         <div class="form-actions">
-          <button id="missingItemButton" class="quiet-button" type="button">品目补充功能准备中</button>
+          <button id="missingItemButton" class="quiet-button" type="button">找不到？申请新增商品</button>
           <button id="submitReviewButton" class="submit-review" type="submit">提交评价</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="review-modal" id="missingItemModal" hidden>
+    <button class="modal-backdrop" id="missingItemBackdrop" type="button" aria-label="关闭新增商品申请"></button>
+    <section class="review-sheet" role="dialog" aria-modal="true" aria-labelledby="missingItemTitle">
+      <header class="review-header">
+        <div><p class="dialog-context">用户补充 · 自动审核</p><h2 id="missingItemTitle">申请新增商品</h2></div>
+        <button id="closeMissingItemButton" class="close-button" type="button" aria-label="关闭"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19" /></svg></button>
+      </header>
+      <form id="missingItemForm" class="review-form">
+        <div class="form-row">
+          <label>频道
+            <select id="missingItemChannel" required>
+              <option value="beauty">美妆</option>
+              <option value="life">生活</option>
+              <option value="fashion">潮流</option>
+            </select>
+          </label>
+          <label>品牌
+            <input id="missingItemBrand" type="text" minlength="1" maxlength="160" required placeholder="例如：JUNG SAEM MOOL" />
+          </label>
+        </div>
+        <label>商品名称（中文、韩文或英文均可）
+          <input id="missingItemName" type="text" minlength="2" maxlength="200" required placeholder="尽量写完整型号、容量或色号" />
+        </label>
+        <label>官方或零售商品链接
+          <input id="missingItemUrl" type="url" inputmode="url" maxlength="600" required placeholder="https://…" />
+        </label>
+        <label>补充说明（可选）
+          <textarea id="missingItemNote" maxlength="800" rows="3" placeholder="例如：在 OY 明洞店看到；请不要填写联系方式"></textarea>
+        </label>
+        <p class="form-note">DeepSeek 会检查内容、整理中文名并排查重复商品。通过后商品会自动入库；没有官方图片和价格的商品会先以基础资料展示。</p>
+        <div class="form-actions">
+          <button id="cancelMissingItemButton" class="quiet-button" type="button">取消</button>
+          <button id="submitMissingItemButton" class="submit-review" type="submit">提交并自动审核</button>
         </div>
       </form>
     </section>
@@ -416,7 +455,7 @@
   </template>
 
   <script src="./config.js?v=20260927m"></script>
-  <script src="./app.js?v=20260927r"></script>
+  <script src="./app.js?v=20260927s"></script>
   <script src="./community.js?v=20260927b"></script>
 </body>
 </html>

@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.delete-account]
 verify_jwt = true
+
+[functions.catalog-import]
+verify_jwt = false
+
+[functions.moderate-item-request]
+verify_jwt = false
+
+[functions.moderate-place-submission]
+verify_jwt = false

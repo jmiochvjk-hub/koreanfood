@@ -5,3 +5,4 @@ dist/
 .env.*
 .impeccable-cache/
 supabase/.temp/
+.catalog-cache/

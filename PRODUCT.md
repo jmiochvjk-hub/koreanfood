@@ -31,7 +31,7 @@ BanFan is not a purchasing or daigou platform and not a generic social feed. It 
 
 - Four open channels: FOOD 美食, BEAUTY 美妆, LIFE 生活, FASHION 潮流.
 - Food supports both a list and a map, including adding a new place.
-- Non-food items are imported by the platform. Current evidence includes an Olive Young seed catalogue.
+- Non-food items以平台导入的结构化商品库为主；用户找不到商品时可提供品牌、完整名称和公开商品链接申请新增，DeepSeek 自动审核、规范中文名并排重后才入库。
 - Reviews require at least one real photo; user photos belong in reviews rather than replacing the official catalogue image.
 - Community posts require at least one real photo but do not require an existing product or place; linking a post back to a durable record is encouraged when possible.
 - “问一问” answers questions only from existing site evidence and shows the underlying products, places, reviews, or posts as clickable sources.
@@ -40,7 +40,7 @@ BanFan is not a purchasing or daigou platform and not a generic social feed. It 
 - Barcode scanning is intentionally out of scope for the current product.
 - The current implementation is a static HTML/CSS/JavaScript web app backed by Supabase and deployed with GitHub Pages.
 - China-accessible mapping and Mini Program support remain open technical decisions; the current Korean web map may not work reliably in mainland China.
-- Registration and WeChat login remain open product and implementation decisions.
+- 邮箱验证码登录已开放；微信登录仍取决于微信开放平台资质。
 
 ## Brand Commitments
 
